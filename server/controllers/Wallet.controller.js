@@ -8,10 +8,19 @@ import WalletTransaction     from "../models/WalletTransaction.js";
 import AgtRate               from "../models/Agtrate.js";
 
 // ── PayMongo client ───────────────────────────────────────────────────────────
+// Automatically switches between test and live keys based on NODE_ENV
+const isProduction = process.env.NODE_ENV === "production";
+
+const paymongoSecretKey = isProduction
+  ? process.env.PAYMONGO_SECRET_KEY_LIVE
+  : process.env.PAYMONGO_SECRET_KEY_TEST;
+
+console.log(`[PayMongo] Using ${isProduction ? "LIVE" : "TEST"} key`);
+
 const paymongo = axios.create({
   baseURL: "https://api.paymongo.com/v1",
   headers: {
-    Authorization: `Basic ${Buffer.from(process.env.PAYMONGO_SECRET_KEY + ":").toString("base64")}`,
+    Authorization: `Basic ${Buffer.from(paymongoSecretKey + ":").toString("base64")}`,
     "Content-Type": "application/json",
   },
 });
@@ -103,6 +112,18 @@ export const getTransactions = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const depositGcash = async (req, res) => {
   console.log("[depositGcash] POST /api/wallet/deposit/gcash | body:", req.body, "| userId:", req.user?.id);
+
+  // ── 🛡️ Block real payments in development ──────────────────────────────────
+  if (!isProduction) {
+    console.warn("[depositGcash] ⚠️  Non-production environment detected.");
+    console.warn("[depositGcash] ⚠️  Use PayMongo test cards only — NOT real GCash/QR Ph.");
+    // We allow the request to continue but only with test key (already set above).
+    // To fully block, uncomment the lines below:
+    // return res.status(403).json({
+    //   message: "Real payments are disabled in development. Use test credentials only.",
+    // });
+  }
+
   const { amountPhp } = req.body;
 
   if (!amountPhp || parseFloat(amountPhp) <= 0) {
@@ -126,6 +147,7 @@ export const depositGcash = async (req, res) => {
       amountAgt,
       amountPhp:     parseFloat(amountPhp),
       status:        "PENDING",
+      isTestMode:    !isProduction,   // 👈 track if this was a test transaction
     });
     console.log("[depositGcash] WalletTransaction created, id:", tx.id);
 
@@ -137,7 +159,7 @@ export const depositGcash = async (req, res) => {
         attributes: {
           amount:      centavos,
           currency:    "PHP",
-          description: `AgriTrust Deposit — ${amountAgt} AGT`,
+          description: `AgriTrust Deposit — ${amountAgt} AGT${!isProduction ? " [TEST]" : ""}`,
           remarks:     `txId:${tx.id}|wallet:${req.user.walletAddress}`,
         },
       },
@@ -150,7 +172,13 @@ export const depositGcash = async (req, res) => {
     await tx.update({ referenceNo: paymongoLinkId });
     console.log("[depositGcash] WalletTransaction updated with referenceNo:", paymongoLinkId);
 
-    res.status(201).json({ transactionId: tx.id, checkoutUrl, amountAgt, amountPhp });
+    res.status(201).json({
+      transactionId: tx.id,
+      checkoutUrl,
+      amountAgt,
+      amountPhp,
+      isTestMode: !isProduction,   // 👈 send to frontend so it can show a warning
+    });
   } catch (e) {
     console.error("[depositGcash] Error:", e.response?.data ?? e.message);
     res.status(500).json({ message: "Failed to create GCash payment link" });
@@ -177,8 +205,13 @@ export const paymongoWebhook = async (req, res) => {
     const signature = parts.te ?? parts.li;
     console.log("[paymongoWebhook] Signature parts — timestamp:", timestamp, "| sig:", signature);
 
+    // Use correct webhook secret based on environment
+    const webhookSecret = isProduction
+      ? process.env.PAYMONGO_WEBHOOK_SECRET_LIVE
+      : process.env.PAYMONGO_WEBHOOK_SECRET_TEST;
+
     const expected = crypto
-      .createHmac("sha256", process.env.PAYMONGO_WEBHOOK_SECRET)
+      .createHmac("sha256", webhookSecret)
       .update(`${timestamp}.${JSON.stringify(req.body)}`)
       .digest("hex");
 
@@ -282,9 +315,10 @@ export const withdraw = async (req, res) => {
       gcashNumber,
       gcashName:     gcashName ?? "",
       status:        "PENDING",
+      isTestMode:    !isProduction,
     });
     console.log("[withdraw] WalletTransaction created, id:", tx.id);
-    
+
     res.status(201).json({
       message:       "Withdrawal request submitted. GCash will be sent within 1–2 hours.",
       transactionId: tx.id,
@@ -366,7 +400,7 @@ export const adminGetAll = async (req, res) => {
       limit: 100,
     });
     res.json(all);
-    console.log(all)
+    console.log(all);
   } catch {
     res.status(500).json({ message: "Failed to fetch transactions" });
   }
@@ -374,7 +408,6 @@ export const adminGetAll = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /api/wallet/admin/cancel/:id   [ADMIN]
-// Cancels a PENDING transaction (marks as REJECTED with reason "Cancelled by admin")
 // ─────────────────────────────────────────────────────────────────────────────
 export const adminCancel = async (req, res) => {
   console.log("[adminCancel] DELETE /api/wallet/admin/cancel/:id | id:", req.params.id);
