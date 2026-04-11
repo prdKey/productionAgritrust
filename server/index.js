@@ -4,6 +4,10 @@ import { sequelize } from "./models/index.js";
 import { initSocket } from "./config/socket.js";
 import cors from "cors";
 import dotenv from "dotenv";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import hpp from "hpp";
+import cookieParser from "cookie-parser";
 dotenv.config();
 
 //Routes
@@ -23,18 +27,60 @@ import flagRoute from "./routes/Flag.route.js"
 const app = express();
 const server = http.createServer(app);
 
-app.use(cors(
-  {
-    origin: [
+// 1. Security Headers
+app.use(helmet({
+  frameguard: { action: "deny" },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      frameAncestors: ["'none'"],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true,
+  },
+}));
+
+// 2. Hide Express fingerprint
+app.disable("x-powered-by");
+
+// 3. Rate Limiting
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { error: "Too many requests, please try again later." },
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: "Too many login attempts." },
+});
+
+app.use(globalLimiter);
+
+// 4. CORS
+app.use(cors({
+  origin: [
     "http://localhost:5173",
     "https://agritrust.shop",
   ],
   credentials: true,
-  }
-))
+}));
 
-app.use(express.json());
+// 5. Body Parser with size limit
+app.use(express.json({ limit: "10kb" }));
+app.use(express.urlencoded({ limit: "10kb", extended: true }));
 
+// 6. Cookie Parser
+app.use(cookieParser());
+
+// 7. Prevent Parameter Pollution
+app.use(hpp());
+
+// Routes
 app.use("/api/ratings", ratingRoute)
 app.use("/api/flags", flagRoute)
 app.use("/api/wallet", walletRoute)
@@ -43,7 +89,7 @@ app.use("/api/addresses", addressRoute)
 app.use("/api/sfuel", sfuelRoute);
 app.use("/api/tokens", tokenRoute);
 app.use("/api/products", productRoute)
-app.use("/api/auth", authRoute)
+app.use("/api/auth", authLimiter, authRoute)  // stricter limit on auth
 app.use("/api/users", userRoute)
 app.use("/api/orders", orderRoute)
 app.use("/api/carts", cartRoute)
