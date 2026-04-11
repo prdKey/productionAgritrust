@@ -13,7 +13,8 @@ import {
   adminReject,
   adminGetPending,
   adminGetAll,
-  adminCancel
+  adminCancel,
+  depositTest
 } from "../controllers/Wallet.controller.js";
 
 const router = express.Router();
@@ -29,6 +30,7 @@ router.get ("/balance",       authMiddleware, getBalance);
 router.get ("/transactions",  authMiddleware, getTransactions);
 router.post("/deposit/gcash", authMiddleware, depositGcash);
 router.post("/withdraw",      authMiddleware, withdraw);
+router.post("/deposit/test", authMiddleware, depositTest);
 
 // ── Admin only ────────────────────────────────────────────────────────────────
 // uses your existing authMiddleware + role check inline

@@ -4,10 +4,6 @@ import { sequelize } from "./models/index.js";
 import { initSocket } from "./config/socket.js";
 import cors from "cors";
 import dotenv from "dotenv";
-import helmet from "helmet";
-import rateLimit from "express-rate-limit";
-import hpp from "hpp";
-import cookieParser from "cookie-parser";
 
 dotenv.config();
 
@@ -29,72 +25,15 @@ const app = express();
 const server = http.createServer(app);
 
 /* =========================
-   1. SECURITY HEADERS
-========================= */
-app.use(
-  helmet({
-    frameguard: { action: "deny" },
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        frameAncestors: ["'none'"],
-      },
-    },
-    hsts: {
-      maxAge: 31536000,
-      includeSubDomains: true,
-      preload: true,
-    },
-  })
-);
-
-app.disable("x-powered-by");
-
-/* =========================
    2. CORS (IMPORTANT FIX)
 ========================= */
 const corsOptions = {
-  origin: ["http://localhost:5173", "https://agritrust.shop"],
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  origin: ["https://agritrust.shop"],
+  credentials: true
 };
 
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions)); // IMPORTANT FOR PREFLIGHT
-
-/* =========================
-   3. BODY PARSER
-========================= */
-app.use(express.json({ limit: "10kb" }));
-app.use(express.urlencoded({ limit: "10kb", extended: true }));
-
-/* =========================
-   4. COOKIE + PARAMETER POLLUTION PROTECTION
-========================= */
-app.use(cookieParser());
-app.use(hpp());
-
-/* =========================
-   5. RATE LIMITING (FIXED: skip OPTIONS)
-========================= */
-const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: { error: "Too many requests, please try again later." },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: (req) => req.method === "OPTIONS", // 🔥 IMPORTANT FIX
-});
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { error: "Too many login attempts." },
-  skip: (req) => req.method === "OPTIONS",
-});
-
-app.use(globalLimiter);
+app.use(express.json());
 
 /* =========================
    6. ROUTES
@@ -107,7 +46,7 @@ app.use("/api/addresses", addressRoute);
 app.use("/api/sfuel", sfuelRoute);
 app.use("/api/tokens", tokenRoute);
 app.use("/api/products", productRoute);
-app.use("/api/auth", authLimiter, authRoute);
+app.use("/api/auth", authRoute);
 app.use("/api/users", userRoute);
 app.use("/api/orders", orderRoute);
 app.use("/api/carts", cartRoute);
@@ -121,7 +60,7 @@ initSocket(server);
    8. START SERVER
 ========================= */
 sequelize.sync().then(() => {
-  server.listen(3001, () => {
-    console.log("Server running on port 3001");
+  server.listen(process.env.PORT || 3001, () => {
+    console.log(`Server running on port ${process.env.PORT || 3001}`);
   });
 });

@@ -11,6 +11,7 @@ const nonces = {};
 export const getNonce = async (req, res) =>
 {
   try{
+    console.log("Received getNonce request with body:", req.body);
     const {walletAddress, firstName, lastName, email, mobileNumber, gender, dob, houseNumber, street, barangay, city, postalCode} = req.body;
     if (!walletAddress) return res.status(400).json({ message: "Wallet address required" });
     let user = await User.findOne({ where: { walletAddress } });
@@ -35,6 +36,7 @@ export const getNonce = async (req, res) =>
 
     res.status(201).json({nonce})
   }catch (err){
+    console.error("Error in getNonce:", err);
     res.status(401).json({message: err.message})
   }
 }

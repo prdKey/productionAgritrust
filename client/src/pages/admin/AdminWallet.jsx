@@ -10,13 +10,27 @@ import {
 } from "../../services/walletService.js";
 import {
   ArrowUpRight, ArrowDownLeft, CheckCircle2, XCircle,
-  RefreshCw, Clock, AlertCircle, Wallet, User, Phone,
-  Loader2, Trash2,
+  RefreshCw, Clock, AlertCircle, User, Phone,
+  Loader2, Trash2, FlaskConical, Smartphone,
 } from "lucide-react";
 
 const fmt     = (n) => n == null ? "—" : Number(n).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 const fmtPhp  = (n) => n == null ? "—" : `₱${Number(n).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtDate = (d) => new Date(d).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" });
+
+const EWALLET_LABEL = {
+  gcash:    "GCash",
+  maya:     "Maya",
+  grabpay:  "GrabPay",
+  paymongo: "PayMongo",
+};
+
+const EWALLET_COLOR = {
+  gcash:    "bg-blue-100 text-blue-700",
+  maya:     "bg-green-100 text-green-700",
+  grabpay:  "bg-emerald-100 text-emerald-700",
+  paymongo: "bg-purple-100 text-purple-700",
+};
 
 const useToast = () => {
   const [toast, setToast] = useState(null);
@@ -63,7 +77,8 @@ export default function AdminWallet() {
     setActionLoading(tx.id);
     try {
       await adminApprove(tx.id);
-      show(`Withdrawal #${tx.id} approved. Send ${fmtPhp(tx.amountPhp)} to ${tx.gcashNumber}.`);
+      const walletLabel = EWALLET_LABEL[tx.ewalletType] ?? "E-Wallet";
+      show(`Withdrawal #${tx.id} approved. Send ${fmtPhp(tx.amountPhp)} to ${tx.gcashNumber} via ${walletLabel}.`);
       loadTxs();
     } catch (e) {
       show(e.response?.data?.message ?? "Failed to approve", "error");
@@ -102,14 +117,15 @@ export default function AdminWallet() {
     }
   };
 
-  const pendingCount   = txs.filter((t) => t.status === "PENDING").length;
-  const completedCount = txs.filter((t) => t.status === "COMPLETED").length;
-  const rejectedCount  = txs.filter((t) => t.status === "REJECTED").length;
+  const pendingWithdrawals = txs.filter((t) => t.status === "PENDING" && t.type === "WITHDRAW" && !t.isTestMode);
+  const pendingCount       = txs.filter((t) => t.status === "PENDING").length;
+  const completedCount     = txs.filter((t) => t.status === "COMPLETED").length;
+  const rejectedCount      = txs.filter((t) => t.status === "REJECTED").length;
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
 
-      {/* Toast */}
+      {/* ── Toast ──────────────────────────────────────────────────────── */}
       {toast && (
         <div className={`fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-semibold text-white
           ${toast.type === "error" ? "bg-red-600" : "bg-green-600"}`}>
@@ -118,7 +134,7 @@ export default function AdminWallet() {
         </div>
       )}
 
-      {/* Reject Modal */}
+      {/* ── Reject Modal ───────────────────────────────────────────────── */}
       {rejectModal && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
@@ -158,54 +174,40 @@ export default function AdminWallet() {
         </div>
       )}
 
-      {/* Header */}
+      {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-          Wallet Management
-        </h1>
-        <p className="text-gray-500 mt-1">Manage E-Wallet deposits and withdrawal requests</p>
+        <h1 className="text-3xl font-bold text-gray-900">Wallet Management</h1>
+        <p className="text-gray-500 mt-1">Manage e-wallet deposits and withdrawal requests</p>
       </div>
 
-      {/* Stats */}
+      {/* ── Stats ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5" /> Pending
-            </p>
-            <button onClick={loadTxs} disabled={loading}
-              className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors disabled:opacity-40">
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-            </button>
+        {[
+          { label: "Pending",   icon: <Clock className="w-3.5 h-3.5" />,        count: pendingCount,   color: "text-amber-500" },
+          { label: "Completed", icon: <CheckCircle2 className="w-3.5 h-3.5" />, count: completedCount, color: "text-green-600" },
+          { label: "Rejected",  icon: <XCircle className="w-3.5 h-3.5" />,      count: rejectedCount,  color: "text-red-500"   },
+        ].map(({ label, icon, count, color }) => (
+          <div key={label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-1">
+              <p className={`text-xs uppercase tracking-wide font-semibold flex items-center gap-1 text-gray-400`}>
+                {icon} {label}
+              </p>
+              {label === "Pending" && (
+                <button onClick={loadTxs} disabled={loading}
+                  className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors disabled:opacity-40">
+                  <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+                </button>
+              )}
+            </div>
+            {loading
+              ? <div className="h-10 flex items-center"><Loader2 className={`w-5 h-5 animate-spin ${color}`} /></div>
+              : <p className={`text-4xl font-black ${color}`}>{count} <span className="text-xl text-gray-400 font-semibold">txns</span></p>
+            }
           </div>
-          {loading
-            ? <div className="h-10 flex items-center"><Loader2 className="w-5 h-5 animate-spin text-amber-500" /></div>
-            : <p className="text-4xl font-black text-amber-500">{pendingCount} <span className="text-xl text-gray-400 font-semibold">txns</span></p>
-          }
-        </div>
-
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold flex items-center gap-1 mb-1">
-            <CheckCircle2 className="w-3.5 h-3.5" /> Completed
-          </p>
-          {loading
-            ? <div className="h-10 flex items-center"><Loader2 className="w-5 h-5 animate-spin text-green-500" /></div>
-            : <p className="text-4xl font-black text-green-600">{completedCount} <span className="text-xl text-gray-400 font-semibold">txns</span></p>
-          }
-        </div>
-
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold flex items-center gap-1 mb-1">
-            <XCircle className="w-3.5 h-3.5" /> Rejected
-          </p>
-          {loading
-            ? <div className="h-10 flex items-center"><Loader2 className="w-5 h-5 animate-spin text-red-500" /></div>
-            : <p className="text-4xl font-black text-red-500">{rejectedCount} <span className="text-xl text-gray-400 font-semibold">txns</span></p>
-          }
-        </div>
+        ))}
       </div>
 
-      {/* Filter + Reminder */}
+      {/* ── Filter + Reminder ──────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex gap-2">
           {["PENDING", "ALL"].map((f) => (
@@ -219,17 +221,18 @@ export default function AdminWallet() {
           ))}
         </div>
 
-        {txs.some((t) => t.status === "PENDING" && t.type === "WITHDRAW") && (
+        {/* Only show reminder for LIVE pending withdrawals, not test mode */}
+        {pendingWithdrawals.length > 0 && (
           <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
             <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
             <p className="text-xs text-amber-700">
-              Send GCash manually <strong>before</strong> clicking Approve.
+              Send e-wallet payment manually <strong>before</strong> clicking Approve.
             </p>
           </div>
         )}
       </div>
 
-      {/* Table */}
+      {/* ── Table ──────────────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {loading && (
           <div className="py-12 text-center flex items-center justify-center gap-2 text-gray-400 text-sm">
@@ -248,7 +251,7 @@ export default function AdminWallet() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
-                  {["ID", "Type", "User", "Amount", "GCash", "Date", "Status", "Actions"].map((h) => (
+                  {["ID", "Type", "User", "Amount", "E-Wallet", "Recipient", "Date", "Status", "Actions"].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wide whitespace-nowrap">
                       {h}
                     </th>
@@ -257,10 +260,19 @@ export default function AdminWallet() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {txs.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={tx.id} className={`hover:bg-gray-50 transition-colors ${tx.isTestMode ? "bg-amber-50/30" : ""}`}>
 
-                    <td className="px-4 py-3 text-xs font-mono text-gray-400">#{tx.id}</td>
+                    {/* ID */}
+                    <td className="px-4 py-3">
+                      <p className="text-xs font-mono text-gray-400">#{tx.id}</p>
+                      {tx.isTestMode && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full mt-0.5">
+                          <FlaskConical className="w-2.5 h-2.5" /> test
+                        </span>
+                      )}
+                    </td>
 
+                    {/* Type */}
                     <td className="px-4 py-3">
                       <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold
                         ${tx.type === "DEPOSIT" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
@@ -271,6 +283,7 @@ export default function AdminWallet() {
                       </div>
                     </td>
 
+                    {/* User */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <div className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
@@ -278,18 +291,38 @@ export default function AdminWallet() {
                         </div>
                         <div>
                           <p className="text-xs font-semibold text-gray-700">User #{tx.userId}</p>
-                          <p className="text-[10px] font-mono text-gray-400">{tx.walletAddress?.slice(0, 8)}...</p>
+                          <p className="text-[10px] font-mono text-gray-400 truncate max-w-[80px]">{tx.walletAddress?.slice(0, 10)}...</p>
                         </div>
                       </div>
                     </td>
 
+                    {/* Amount */}
                     <td className="px-4 py-3">
                       <p className={`text-sm font-bold ${tx.type === "DEPOSIT" ? "text-green-600" : "text-red-500"}`}>
                         {tx.type === "DEPOSIT" ? "+" : "-"}{fmt(tx.amountAgt)} AGT
                       </p>
                       <p className="text-[10px] text-gray-400">{fmtPhp(tx.amountPhp)}</p>
+                      {tx.txHash && (
+                        <p className="text-[10px] font-mono text-blue-400 truncate max-w-[80px]" title={tx.txHash}>
+                          {tx.txHash.slice(0, 10)}...
+                        </p>
+                      )}
                     </td>
 
+                    {/* E-Wallet */}
+                    <td className="px-4 py-3">
+                      {tx.ewalletType ? (
+                        <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-full
+                          ${EWALLET_COLOR[tx.ewalletType] ?? "bg-gray-100 text-gray-600"}`}>
+                          <Smartphone className="w-3 h-3" />
+                          {EWALLET_LABEL[tx.ewalletType] ?? tx.ewalletType}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-gray-300 italic">—</span>
+                      )}
+                    </td>
+
+                    {/* Recipient */}
                     <td className="px-4 py-3">
                       {tx.gcashNumber ? (
                         <div>
@@ -300,14 +333,18 @@ export default function AdminWallet() {
                           {tx.gcashName && <p className="text-[10px] text-gray-400">{tx.gcashName}</p>}
                         </div>
                       ) : (
-                        <span className="text-[10px] text-gray-300 italic">Auto (PayMongo)</span>
+                        <span className="text-[10px] text-gray-300 italic">
+                          {tx.ewalletType === "paymongo" ? "Auto (PayMongo)" : "—"}
+                        </span>
                       )}
                     </td>
 
+                    {/* Date */}
                     <td className="px-4 py-3 text-[10px] text-gray-400 whitespace-nowrap">
                       {fmtDate(tx.created_at)}
                     </td>
 
+                    {/* Status */}
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full border ${STATUS_STYLE[tx.status]}`}>
                         {tx.status === "PENDING"   && <Clock className="w-2.5 h-2.5" />}
@@ -316,13 +353,16 @@ export default function AdminWallet() {
                         {tx.status}
                       </span>
                       {tx.adminNote && (
-                        <p className="text-[10px] text-gray-400 mt-0.5 max-w-[100px] truncate">{tx.adminNote}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5 max-w-[100px] truncate" title={tx.adminNote}>
+                          {tx.adminNote}
+                        </p>
                       )}
                     </td>
 
                     {/* Actions */}
                     <td className="px-4 py-3">
-                      {tx.status === "PENDING" && tx.type === "WITHDRAW" && (
+                      {/* PENDING WITHDRAW — live mode: approve/reject/cancel */}
+                      {tx.status === "PENDING" && tx.type === "WITHDRAW" && !tx.isTestMode && (
                         <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => handleApprove(tx)}
@@ -345,35 +385,50 @@ export default function AdminWallet() {
                             onClick={() => handleCancel(tx)}
                             disabled={actionLoading === tx.id}
                             className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-400 text-xs font-semibold hover:bg-gray-50 hover:text-gray-600 disabled:opacity-40 transition-colors"
-                            title="Cancel transaction"
+                            title="Cancel"
                           >
                             <Trash2 className="w-3 h-3" />
                           </button>
                         </div>
                       )}
 
-                      {tx.status === "PENDING" && tx.type === "DEPOSIT" && (
+                      {/* PENDING WITHDRAW — test mode: auto-completed, nothing needed */}
+                      {tx.status === "PENDING" && tx.type === "WITHDRAW" && tx.isTestMode && (
                         <div className="flex items-center gap-1.5">
                           <span className="text-[10px] text-amber-500 flex items-center gap-1">
-                            <Clock className="w-3 h-3" /> Awaiting payment
+                            <FlaskConical className="w-3 h-3" /> Test — processing
                           </span>
-                          <button
-                            onClick={() => handleCancel(tx)}
-                            disabled={actionLoading === tx.id}
-                            className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-400 text-xs font-semibold hover:bg-gray-50 hover:text-gray-600 disabled:opacity-40 transition-colors"
-                            title="Cancel transaction"
-                          >
-                            {actionLoading === tx.id
-                              ? <Loader2 className="w-3 h-3 animate-spin" />
-                              : <Trash2 className="w-3 h-3" />}
-                          </button>
                         </div>
                       )}
 
+                      {/* PENDING DEPOSIT — awaiting payment webhook */}
+                      {tx.status === "PENDING" && tx.type === "DEPOSIT" && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-amber-500 flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {tx.isTestMode ? "Test — processing" : "Awaiting payment"}
+                          </span>
+                          {!tx.isTestMode && (
+                            <button
+                              onClick={() => handleCancel(tx)}
+                              disabled={actionLoading === tx.id}
+                              className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-400 text-xs font-semibold hover:bg-gray-50 hover:text-gray-600 disabled:opacity-40 transition-colors"
+                              title="Cancel"
+                            >
+                              {actionLoading === tx.id
+                                ? <Loader2 className="w-3 h-3 animate-spin" />
+                                : <Trash2 className="w-3 h-3" />}
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Already processed */}
                       {tx.status !== "PENDING" && (
                         <span className="text-[10px] text-gray-300">—</span>
                       )}
                     </td>
+
                   </tr>
                 ))}
               </tbody>

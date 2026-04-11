@@ -44,6 +44,17 @@ const _mint = async (walletAddress, amountAgt) => {
   return tx.hash;
 };
 
+const _burn = async (walletAddress, amountAgt) => {
+  console.log("[_burn] Burning", amountAgt, "AGT from", walletAddress);
+  const amountWei = ethers.parseEther(amountAgt.toString());
+  console.log("[_burn] Amount in wei:", amountWei.toString());
+  const tx = await tokenContract.burn(walletAddress, amountWei);
+  console.log("[_burn] Tx sent, waiting for confirmation... hash:", tx.hash);
+  await tx.wait();
+  console.log("[_burn] ✅ Confirmed! txHash:", tx.hash);
+  return tx.hash;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/wallet/rate
 // ─────────────────────────────────────────────────────────────────────────────
@@ -87,7 +98,7 @@ export const getTransactions = async (req, res) => {
       attributes: [
         "id", "type", "amountAgt", "amountPhp",
         "gcashNumber", "referenceNo", "status",
-        "txHash", "adminNote", "created_at",
+        "txHash", "adminNote", "ewalletType", "isTestMode", "created_at",
       ],
     });
     console.log("[getTransactions] Found", txs.length, "transactions");
@@ -99,7 +110,62 @@ export const getTransactions = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// POST /api/wallet/deposit/test
+// Test mode — skips PayMongo, mints AGT directly at 1:1 ratio
+// ─────────────────────────────────────────────────────────────────────────────
+export const depositTest = async (req, res) => {
+  console.log("[depositTest] POST /api/wallet/deposit/test | body:", req.body, "| userId:", req.user?.id);
+  const { amountPhp, ewalletType = "gcash" } = req.body;
+
+  if (!amountPhp || parseFloat(amountPhp) <= 0) {
+    console.warn("[depositTest] Invalid amountPhp:", amountPhp);
+    return res.status(400).json({ message: "Valid amountPhp is required" });
+  }
+  if (parseFloat(amountPhp) < 1) {
+    return res.status(400).json({ message: "Minimum test deposit is ₱1" });
+  }
+
+  try {
+    // 1:1 ratio in test mode — PHP = AGT
+    const amountAgt = parseFloat(amountPhp).toFixed(4);
+    console.log("[depositTest] PHP:", amountPhp, "| AGT (1:1):", amountAgt);
+
+    const tx = await WalletTransaction.create({
+      userId:        req.user.id,
+      walletAddress: req.user.walletAddress,
+      type:          "DEPOSIT",
+      amountAgt,
+      amountPhp:     parseFloat(amountPhp),
+      ewalletType,
+      isTestMode:    true,
+      status:        "PENDING",
+      referenceNo:   `TEST-${Date.now()}`,
+    });
+    console.log("[depositTest] WalletTransaction created, id:", tx.id);
+
+    // Mint directly — no payment gateway
+    const txHash = await _mint(req.user.walletAddress, amountAgt);
+
+    await tx.update({ status: "COMPLETED", txHash });
+    console.log("[depositTest] ✅ Minted and marked COMPLETED | txHash:", txHash);
+
+    res.status(201).json({
+      transactionId: tx.id,
+      amountAgt,
+      amountPhp,
+      txHash,
+      status: "COMPLETED",
+      message: "Test deposit successful. AGT minted at 1:1 ratio.",
+    });
+  } catch (e) {
+    console.error("[depositTest] Error:", e.message);
+    res.status(500).json({ message: "Test deposit failed" });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/wallet/deposit/gcash
+// Live mode — creates PayMongo payment link
 // ─────────────────────────────────────────────────────────────────────────────
 export const depositGcash = async (req, res) => {
   console.log("[depositGcash] POST /api/wallet/deposit/gcash | body:", req.body, "| userId:", req.user?.id);
@@ -119,13 +185,14 @@ export const depositGcash = async (req, res) => {
     const amountAgt = (parseFloat(amountPhp) / rate).toFixed(4);
     console.log("[depositGcash] PHP:", amountPhp, "| AGT:", amountAgt, "| rate:", rate);
 
-    // Create a PENDING transaction first so we have an ID
     const tx = await WalletTransaction.create({
       userId:        req.user.id,
       walletAddress: req.user.walletAddress,
       type:          "DEPOSIT",
       amountAgt,
       amountPhp:     parseFloat(amountPhp),
+      ewalletType:   "paymongo",
+      isTestMode:    false,
       status:        "PENDING",
     });
     console.log("[depositGcash] WalletTransaction created, id:", tx.id);
@@ -138,7 +205,6 @@ export const depositGcash = async (req, res) => {
         attributes: {
           amount:      centavos,
           currency:    "PHP",
-          // Include txId and wallet in description as fallback
           description: `AgriTrust Deposit — ${amountAgt} AGT | txId:${tx.id}|wallet:${req.user.walletAddress}`,
           remarks:     `txId:${tx.id}|wallet:${req.user.walletAddress}`,
         },
@@ -149,7 +215,6 @@ export const depositGcash = async (req, res) => {
     const paymongoLinkId = data.data.id;
     console.log("[depositGcash] PayMongo link created:", paymongoLinkId, "| checkoutUrl:", checkoutUrl);
 
-    // Save the PayMongo link ID as referenceNo — this is how the webhook finds the tx
     await tx.update({ referenceNo: paymongoLinkId });
     console.log("[depositGcash] WalletTransaction updated with referenceNo:", paymongoLinkId);
 
@@ -165,8 +230,6 @@ export const depositGcash = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const paymongoWebhook = async (req, res) => {
   console.log("[paymongoWebhook] POST /api/wallet/webhook/paymongo");
-
-  // ── DEBUG: log full raw body so you can inspect the real payload structure ──
   console.log("[paymongoWebhook] RAW BODY:", JSON.stringify(req.body, null, 2));
   console.log("[paymongoWebhook] Headers:", JSON.stringify(req.headers, null, 2));
 
@@ -176,22 +239,15 @@ export const paymongoWebhook = async (req, res) => {
     return res.status(400).json({ message: "Missing signature" });
   }
 
-  // ── Signature verification ────────────────────────────────────────────────
   try {
     const parts     = Object.fromEntries(sigHeader.split(",").map((p) => p.split("=")));
     const timestamp = parts.t;
-    // "li" = live mode signature, "te" = test mode signature
     const signature = parts.li ?? parts.te;
-
-    console.log("[paymongoWebhook] Timestamp:", timestamp, "| Signature:", signature);
 
     const expected = crypto
       .createHmac("sha256", process.env.PAYMONGO_WEBHOOK_SECRET)
       .update(`${timestamp}.${JSON.stringify(req.body)}`)
       .digest("hex");
-
-    console.log("[paymongoWebhook] Expected sig:", expected);
-    console.log("[paymongoWebhook] Received sig:", signature);
 
     if (expected !== signature) {
       console.error("[paymongoWebhook] ❌ Signature mismatch!");
@@ -203,15 +259,12 @@ export const paymongoWebhook = async (req, res) => {
     return res.status(400).json({ message: "Signature verification failed" });
   }
 
-  // Respond 200 immediately — PayMongo retries if it doesn't get a fast response
   res.status(200).json({ received: true });
 
-  // ── Process event asynchronously after responding ─────────────────────────
   try {
     const eventType = req.body?.data?.attributes?.type;
     console.log("[paymongoWebhook] Event type:", eventType);
 
-    // PayMongo may send any of these depending on your account / API version
     const PAID_EVENTS = new Set([
       "payment.paid",
       "link.payment.paid",
@@ -223,17 +276,11 @@ export const paymongoWebhook = async (req, res) => {
       return;
     }
 
-    // ── Resolve the PayMongo link ID ────────────────────────────────────────
-    // For link events: the link itself is req.body.data, the nested payment is
-    // inside req.body.data.attributes.data.  We want the LINK id (what we saved
-    // as referenceNo when creating the PayMongo link).
     const eventData = req.body.data;
-
-    // Try several paths — log which one wins so you can clean this up later
     const linkId =
-      eventData?.attributes?.data?.id          // payment nested inside link event
-      ?? eventData?.attributes?.payment?.id     // some versions nest differently
-      ?? eventData?.id;                         // fallback: the event object's own id
+      eventData?.attributes?.data?.id
+      ?? eventData?.attributes?.payment?.id
+      ?? eventData?.id;
 
     console.log("[paymongoWebhook] Resolved linkId:", linkId);
 
@@ -242,20 +289,14 @@ export const paymongoWebhook = async (req, res) => {
       return;
     }
 
-    // ── Find the pending transaction by the PayMongo link ID ────────────────
-    // This is reliable because we saved the link ID as referenceNo in depositGcash
     let tx = await WalletTransaction.findOne({
       where: { referenceNo: linkId, status: "PENDING" },
     });
 
-    // Fallback: try to parse txId from description/remarks if referenceNo lookup fails
     if (!tx) {
       console.warn("[paymongoWebhook] No tx found for linkId:", linkId, "— trying remarks/description fallback");
-
-      const attrs      = eventData?.attributes?.data?.attributes ?? eventData?.attributes ?? {};
-      const searchStr  = attrs.description ?? attrs.remarks ?? "";
-      console.log("[paymongoWebhook] Fallback search string:", searchStr);
-
+      const attrs     = eventData?.attributes?.data?.attributes ?? eventData?.attributes ?? {};
+      const searchStr = attrs.description ?? attrs.remarks ?? "";
       const txIdMatch = searchStr.match(/txId:(\d+)/);
       if (txIdMatch) {
         const txId = parseInt(txIdMatch[1]);
@@ -265,15 +306,13 @@ export const paymongoWebhook = async (req, res) => {
     }
 
     if (!tx) {
-      console.error("[paymongoWebhook] No pending transaction found — may have already been processed or linkId mismatch");
+      console.error("[paymongoWebhook] No pending transaction found");
       return;
     }
 
     console.log("[paymongoWebhook] Processing tx id:", tx.id, "| wallet:", tx.walletAddress, "| AGT:", tx.amountAgt);
 
-    // ── Mint tokens ─────────────────────────────────────────────────────────
     const txHash = await _mint(tx.walletAddress, tx.amountAgt);
-
     await tx.update({ status: "COMPLETED", txHash, referenceNo: linkId });
     console.log("[paymongoWebhook] ✅ Minted and marked COMPLETED | txHash:", txHash);
 
@@ -284,10 +323,13 @@ export const paymongoWebhook = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/wallet/withdraw
+// Both test and live — burns AGT on-chain, then marks PENDING for admin payout
+// In test mode: burns immediately and marks COMPLETED (no real payout needed)
+// In live mode: burns immediately and stays PENDING until admin sends GCash
 // ─────────────────────────────────────────────────────────────────────────────
 export const withdraw = async (req, res) => {
   console.log("[withdraw] POST /api/wallet/withdraw | body:", req.body, "| userId:", req.user?.id);
-  const { amountAgt, gcashNumber, gcashName } = req.body;
+  const { amountAgt, gcashNumber, gcashName, ewalletType = "gcash", isTestMode = false } = req.body;
 
   if (!amountAgt || !gcashNumber) {
     console.warn("[withdraw] Missing fields — amountAgt:", amountAgt, "gcashNumber:", gcashNumber);
@@ -307,9 +349,10 @@ export const withdraw = async (req, res) => {
       return res.status(400).json({ message: "Insufficient AGT balance" });
     }
 
-    const rate      = await _getRate();
+    // Use 1:1 ratio in test mode, real rate in live mode
+    const rate      = isTestMode ? 1 : await _getRate();
     const amountPhp = (parseFloat(amountAgt) * rate).toFixed(2);
-    console.log("[withdraw] AGT:", amountAgt, "| PHP:", amountPhp, "| rate:", rate);
+    console.log("[withdraw] AGT:", amountAgt, "| PHP:", amountPhp, "| rate:", rate, "| testMode:", isTestMode);
 
     const tx = await WalletTransaction.create({
       userId:        req.user.id,
@@ -319,15 +362,39 @@ export const withdraw = async (req, res) => {
       amountPhp,
       gcashNumber,
       gcashName:     gcashName ?? "",
+      ewalletType,
+      isTestMode,
       status:        "PENDING",
     });
     console.log("[withdraw] WalletTransaction created, id:", tx.id);
 
+    // Burn AGT on-chain immediately for both modes
+    const txHash = await _burn(req.user.walletAddress, amountAgt);
+    console.log("[withdraw] ✅ Burned AGT | txHash:", txHash);
+
+    if (isTestMode) {
+      // Test mode — auto-complete, no real payout
+      await tx.update({ status: "COMPLETED", txHash });
+      console.log("[withdraw] ✅ Test withdraw completed");
+      return res.status(201).json({
+        message:       "Test withdrawal successful. AGT burned at 1:1 ratio.",
+        transactionId: tx.id,
+        amountAgt,
+        amountPhp,
+        txHash,
+        status:        "COMPLETED",
+      });
+    }
+
+    // Live mode — stays PENDING, admin handles GCash payout
+    await tx.update({ txHash });
+    console.log("[withdraw] ✅ Live withdraw pending admin payout");
     res.status(201).json({
       message:       "Withdrawal request submitted. GCash will be sent within 1–2 hours.",
       transactionId: tx.id,
       amountAgt,
       amountPhp,
+      txHash,
       status:        "PENDING",
     });
   } catch (e) {
@@ -416,7 +483,6 @@ export const adminGetAll = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /api/wallet/admin/cancel/:id
-// Cancels a PENDING transaction (marks as REJECTED with reason "Cancelled by admin")
 // ─────────────────────────────────────────────────────────────────────────────
 export const adminCancel = async (req, res) => {
   console.log("[adminCancel] DELETE /api/wallet/admin/cancel/:id | id:", req.params.id);

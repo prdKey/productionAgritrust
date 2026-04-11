@@ -24,7 +24,23 @@ export const getWalletTransactions = async () => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Deposit via GCash — creates PayMongo link
+// Deposit — TEST MODE
+// Skips PayMongo. Mints AGT directly at 1:1 ratio.
+// payload: { amountPhp, ewalletType }
+// Returns { transactionId, amountAgt, amountPhp, txHash, status }
+// ─────────────────────────────────────────────────────────────────────────────
+export const createTestDeposit = async (amountPhp, ewalletType = "gcash") => {
+  const res = await axios.post(
+    `${API_URL}/wallet/deposit/test`,
+    { amountPhp, ewalletType },
+    { headers: authHeader() }
+  );
+  return res.data;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Deposit — LIVE MODE
+// Creates PayMongo payment link. Redirects user to checkoutUrl.
 // Returns { transactionId, checkoutUrl, amountAgt, amountPhp }
 // ─────────────────────────────────────────────────────────────────────────────
 export const createGcashDeposit = async (amountPhp) => {
@@ -37,8 +53,10 @@ export const createGcashDeposit = async (amountPhp) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Withdraw AGT → GCash
-// payload: { amountAgt, gcashNumber, gcashName }
+// Withdraw AGT → E-Wallet
+// payload: { amountAgt, gcashNumber, gcashName, ewalletType, isTestMode }
+// Test mode:  burns AGT on-chain, auto-completes (no real payout)
+// Live mode:  burns AGT on-chain, stays PENDING until admin sends GCash
 // ─────────────────────────────────────────────────────────────────────────────
 export const submitWithdraw = async (payload) => {
   const res = await axios.post(
@@ -85,6 +103,9 @@ export const adminReject = async (id, reason) => {
   return res.data;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin — cancel transaction
+// ─────────────────────────────────────────────────────────────────────────────
 export const adminCancel = async (id) => {
   const res = await axios.delete(`${API_URL}/wallet/admin/cancel/${id}`, { headers: authHeader() });
   return res.data;

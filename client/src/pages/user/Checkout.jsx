@@ -162,14 +162,24 @@ export default function CheckoutPage() {
     await pollReceiptRaw(txHash);
   };
 
+  // ── CHANGE 1: Restore cart items from sessionStorage if location.state is missing ──
   useEffect(() => {
     if (!user) return;
-    const passedItems = location.state?.items;
+
+    const passedItems =
+      location.state?.items ??
+      JSON.parse(sessionStorage.getItem("checkout_items") ?? "null");
+
     if (!passedItems || passedItems.length === 0) { navigate("/cart"); return; }
+
     const load = async () => {
       try {
         setLoading(true);
         setCartItems(passedItems);
+
+        // ── CHANGE 2: Save items to sessionStorage so they survive address navigation ──
+        sessionStorage.setItem("checkout_items", JSON.stringify(passedItems));
+
         const inputs = {};
         passedItems.forEach(i => { inputs[itemKey(i)] = String(i.quantity); });
         setQtyInputs(inputs);
@@ -344,6 +354,9 @@ export default function CheckoutPage() {
           cartItems.map(i => ({ productId: i.productId, variantIndex: i.variantIndex ?? null }))
         );
       } catch (_) {}
+
+      // ── CHANGE 3: Clear sessionStorage on successful order ──
+      sessionStorage.removeItem("checkout_items");
 
       setOrderSuccess({ orderIds, total, groups });
     } catch (err) {
@@ -531,7 +544,6 @@ export default function CheckoutPage() {
                   <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                     <MapPin className="w-5 h-5 text-green-600" /> Delivery Address
                   </h2>
-                  {/* ← returnTo=/checkout so form comes back here */}
                   <button onClick={() => navigate("/address/new?returnTo=/checkout")}
                     className="flex items-center gap-1.5 text-sm text-green-600 hover:text-green-700 font-semibold">
                     <Plus className="w-4 h-4" /> Add New
@@ -542,7 +554,6 @@ export default function CheckoutPage() {
                     <div className="text-center py-10 text-gray-400">
                       <MapPin className="w-10 h-10 mx-auto mb-3 opacity-30" />
                       <p className="text-sm font-medium mb-1">No saved addresses yet</p>
-                      {/* ← returnTo=/checkout so form comes back here */}
                       <button onClick={() => navigate("/address/new?returnTo=/checkout")}
                         className="px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 transition-colors mt-2">
                         Add Address
@@ -904,4 +915,4 @@ export default function CheckoutPage() {
       </div>
     </div>
   );
-} 
+}
