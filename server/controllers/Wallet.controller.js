@@ -8,19 +8,10 @@ import WalletTransaction     from "../models/WalletTransaction.js";
 import AgtRate               from "../models/Agtrate.js";
 
 // ── PayMongo client ───────────────────────────────────────────────────────────
-// Automatically switches between test and live keys based on NODE_ENV
-const isProduction = process.env.NODE_ENV === "production";
-
-const paymongoSecretKey = isProduction
-  ? process.env.PAYMONGO_SECRET_KEY_LIVE
-  : process.env.PAYMONGO_SECRET_KEY_TEST;
-
-console.log(`[PayMongo] Using ${isProduction ? "LIVE" : "TEST"} key`);
-
 const paymongo = axios.create({
   baseURL: "https://api.paymongo.com/v1",
   headers: {
-    Authorization: `Basic ${Buffer.from(paymongoSecretKey + ":").toString("base64")}`,
+    Authorization: `Basic ${Buffer.from(process.env.PAYMONGO_SECRET_KEY + ":").toString("base64")}`,
     "Content-Type": "application/json",
   },
 });
@@ -28,7 +19,7 @@ const paymongo = axios.create({
 // ── Internal helpers ──────────────────────────────────────────────────────────
 const _getRate = async () => {
   console.log("[_getRate] Fetching rate from DB...");
-  const row = await AgtRate.findOne({ order: [["id", "DESC"]] });
+  const row  = await AgtRate.findOne({ order: [["id", "DESC"]] });
   const rate = parseFloat(row?.ratePhp ?? 1);
   console.log("[_getRate] Rate:", rate);
   return rate;
@@ -36,7 +27,7 @@ const _getRate = async () => {
 
 const _getBalance = async (walletAddress) => {
   console.log("[_getBalance] Fetching balance for:", walletAddress);
-  const raw = await tokenContract.balanceOf(walletAddress);
+  const raw     = await tokenContract.balanceOf(walletAddress);
   const balance = parseFloat(ethers.formatEther(raw));
   console.log("[_getBalance] Balance:", balance);
   return balance;
@@ -112,18 +103,6 @@ export const getTransactions = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const depositGcash = async (req, res) => {
   console.log("[depositGcash] POST /api/wallet/deposit/gcash | body:", req.body, "| userId:", req.user?.id);
-
-  // ── 🛡️ Block real payments in development ──────────────────────────────────
-  if (!isProduction) {
-    console.warn("[depositGcash] ⚠️  Non-production environment detected.");
-    console.warn("[depositGcash] ⚠️  Use PayMongo test cards only — NOT real GCash/QR Ph.");
-    // We allow the request to continue but only with test key (already set above).
-    // To fully block, uncomment the lines below:
-    // return res.status(403).json({
-    //   message: "Real payments are disabled in development. Use test credentials only.",
-    // });
-  }
-
   const { amountPhp } = req.body;
 
   if (!amountPhp || parseFloat(amountPhp) <= 0) {
@@ -140,6 +119,7 @@ export const depositGcash = async (req, res) => {
     const amountAgt = (parseFloat(amountPhp) / rate).toFixed(4);
     console.log("[depositGcash] PHP:", amountPhp, "| AGT:", amountAgt, "| rate:", rate);
 
+    // Create a PENDING transaction first so we have an ID
     const tx = await WalletTransaction.create({
       userId:        req.user.id,
       walletAddress: req.user.walletAddress,
@@ -147,7 +127,6 @@ export const depositGcash = async (req, res) => {
       amountAgt,
       amountPhp:     parseFloat(amountPhp),
       status:        "PENDING",
-      isTestMode:    !isProduction,   // 👈 track if this was a test transaction
     });
     console.log("[depositGcash] WalletTransaction created, id:", tx.id);
 
@@ -159,7 +138,8 @@ export const depositGcash = async (req, res) => {
         attributes: {
           amount:      centavos,
           currency:    "PHP",
-          description: `AgriTrust Deposit — ${amountAgt} AGT${!isProduction ? " [TEST]" : ""}`,
+          // Include txId and wallet in description as fallback
+          description: `AgriTrust Deposit — ${amountAgt} AGT | txId:${tx.id}|wallet:${req.user.walletAddress}`,
           remarks:     `txId:${tx.id}|wallet:${req.user.walletAddress}`,
         },
       },
@@ -169,16 +149,11 @@ export const depositGcash = async (req, res) => {
     const paymongoLinkId = data.data.id;
     console.log("[depositGcash] PayMongo link created:", paymongoLinkId, "| checkoutUrl:", checkoutUrl);
 
+    // Save the PayMongo link ID as referenceNo — this is how the webhook finds the tx
     await tx.update({ referenceNo: paymongoLinkId });
     console.log("[depositGcash] WalletTransaction updated with referenceNo:", paymongoLinkId);
 
-    res.status(201).json({
-      transactionId: tx.id,
-      checkoutUrl,
-      amountAgt,
-      amountPhp,
-      isTestMode: !isProduction,   // 👈 send to frontend so it can show a warning
-    });
+    res.status(201).json({ transactionId: tx.id, checkoutUrl, amountAgt, amountPhp });
   } catch (e) {
     console.error("[depositGcash] Error:", e.response?.data ?? e.message);
     res.status(500).json({ message: "Failed to create GCash payment link" });
@@ -190,8 +165,10 @@ export const depositGcash = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const paymongoWebhook = async (req, res) => {
   console.log("[paymongoWebhook] POST /api/wallet/webhook/paymongo");
+
+  // ── DEBUG: log full raw body so you can inspect the real payload structure ──
+  console.log("[paymongoWebhook] RAW BODY:", JSON.stringify(req.body, null, 2));
   console.log("[paymongoWebhook] Headers:", JSON.stringify(req.headers, null, 2));
-  console.log("[paymongoWebhook] Body:", JSON.stringify(req.body, null, 2));
 
   const sigHeader = req.headers["paymongo-signature"];
   if (!sigHeader) {
@@ -199,19 +176,17 @@ export const paymongoWebhook = async (req, res) => {
     return res.status(400).json({ message: "Missing signature" });
   }
 
+  // ── Signature verification ────────────────────────────────────────────────
   try {
     const parts     = Object.fromEntries(sigHeader.split(",").map((p) => p.split("=")));
     const timestamp = parts.t;
-    const signature = parts.te ?? parts.li;
-    console.log("[paymongoWebhook] Signature parts — timestamp:", timestamp, "| sig:", signature);
+    // "li" = live mode signature, "te" = test mode signature
+    const signature = parts.li ?? parts.te;
 
-    // Use correct webhook secret based on environment
-    const webhookSecret = isProduction
-      ? process.env.PAYMONGO_WEBHOOK_SECRET_LIVE
-      : process.env.PAYMONGO_WEBHOOK_SECRET_TEST;
+    console.log("[paymongoWebhook] Timestamp:", timestamp, "| Signature:", signature);
 
     const expected = crypto
-      .createHmac("sha256", webhookSecret)
+      .createHmac("sha256", process.env.PAYMONGO_WEBHOOK_SECRET)
       .update(`${timestamp}.${JSON.stringify(req.body)}`)
       .digest("hex");
 
@@ -228,50 +203,80 @@ export const paymongoWebhook = async (req, res) => {
     return res.status(400).json({ message: "Signature verification failed" });
   }
 
+  // Respond 200 immediately — PayMongo retries if it doesn't get a fast response
   res.status(200).json({ received: true });
 
+  // ── Process event asynchronously after responding ─────────────────────────
   try {
-    const event = req.body?.data?.attributes;
-    console.log("[paymongoWebhook] Event type:", event?.type);
+    const eventType = req.body?.data?.attributes?.type;
+    console.log("[paymongoWebhook] Event type:", eventType);
 
-    const isPaid =
-      event?.type === "payment.paid" ||
-      event?.type === "link.payment.paid";
+    // PayMongo may send any of these depending on your account / API version
+    const PAID_EVENTS = new Set([
+      "payment.paid",
+      "link.payment.paid",
+      "checkout_session.payment.paid",
+    ]);
 
-    if (!isPaid) {
+    if (!PAID_EVENTS.has(eventType)) {
       console.log("[paymongoWebhook] Not a paid event, skipping.");
       return;
     }
 
-    const payment = event.data;
-    const remarks = payment?.attributes?.remarks ?? "";
-    console.log("[paymongoWebhook] Payment ID:", payment?.id, "| remarks:", remarks);
+    // ── Resolve the PayMongo link ID ────────────────────────────────────────
+    // For link events: the link itself is req.body.data, the nested payment is
+    // inside req.body.data.attributes.data.  We want the LINK id (what we saved
+    // as referenceNo when creating the PayMongo link).
+    const eventData = req.body.data;
 
-    const txIdMatch   = remarks.match(/txId:(\d+)/);
-    const walletMatch = remarks.match(/wallet:(0x[a-fA-F0-9]+)/);
+    // Try several paths — log which one wins so you can clean this up later
+    const linkId =
+      eventData?.attributes?.data?.id          // payment nested inside link event
+      ?? eventData?.attributes?.payment?.id     // some versions nest differently
+      ?? eventData?.id;                         // fallback: the event object's own id
 
-    if (!txIdMatch || !walletMatch) {
-      console.error("[paymongoWebhook] Cannot parse txId/wallet from remarks:", remarks);
+    console.log("[paymongoWebhook] Resolved linkId:", linkId);
+
+    if (!linkId) {
+      console.error("[paymongoWebhook] Cannot determine linkId — check RAW BODY above");
       return;
     }
 
-    const txId          = parseInt(txIdMatch[1]);
-    const walletAddress = walletMatch[1];
-    console.log("[paymongoWebhook] Parsed txId:", txId, "| walletAddress:", walletAddress);
+    // ── Find the pending transaction by the PayMongo link ID ────────────────
+    // This is reliable because we saved the link ID as referenceNo in depositGcash
+    let tx = await WalletTransaction.findOne({
+      where: { referenceNo: linkId, status: "PENDING" },
+    });
 
-    const tx = await WalletTransaction.findByPk(txId);
-    console.log("[paymongoWebhook] WalletTransaction found:", tx ? `id=${tx.id} status=${tx.status}` : "NOT FOUND");
+    // Fallback: try to parse txId from description/remarks if referenceNo lookup fails
+    if (!tx) {
+      console.warn("[paymongoWebhook] No tx found for linkId:", linkId, "— trying remarks/description fallback");
 
-    if (!tx || tx.status !== "PENDING") {
-      console.log("[paymongoWebhook] Skipping — already processed or not found");
+      const attrs      = eventData?.attributes?.data?.attributes ?? eventData?.attributes ?? {};
+      const searchStr  = attrs.description ?? attrs.remarks ?? "";
+      console.log("[paymongoWebhook] Fallback search string:", searchStr);
+
+      const txIdMatch = searchStr.match(/txId:(\d+)/);
+      if (txIdMatch) {
+        const txId = parseInt(txIdMatch[1]);
+        tx = await WalletTransaction.findOne({ where: { id: txId, status: "PENDING" } });
+        console.log("[paymongoWebhook] Fallback found tx by txId:", txId, tx ? "✅" : "❌");
+      }
+    }
+
+    if (!tx) {
+      console.error("[paymongoWebhook] No pending transaction found — may have already been processed or linkId mismatch");
       return;
     }
 
-    console.log("[paymongoWebhook] Minting", tx.amountAgt, "AGT to", walletAddress);
-    const txHash = await _mint(walletAddress, tx.amountAgt);
+    console.log("[paymongoWebhook] Processing tx id:", tx.id, "| wallet:", tx.walletAddress, "| AGT:", tx.amountAgt);
 
-    await tx.update({ status: "COMPLETED", txHash, referenceNo: payment.id });
-    console.log("[paymongoWebhook] ✅ WalletTransaction updated — COMPLETED | txHash:", txHash);
+    // ── Mint tokens ─────────────────────────────────────────────────────────
+    const txHash = await _mint(tx.walletAddress, tx.amountAgt);
+
+    await tx.update({ status: "COMPLETED", txHash, referenceNo: linkId });
+    console.log("[paymongoWebhook] ✅ Minted and marked COMPLETED | txHash:", txHash);
+
   } catch (e) {
     console.error("[paymongoWebhook] Processing error:", e.message, e.stack);
   }
@@ -315,7 +320,6 @@ export const withdraw = async (req, res) => {
       gcashNumber,
       gcashName:     gcashName ?? "",
       status:        "PENDING",
-      isTestMode:    !isProduction,
     });
     console.log("[withdraw] WalletTransaction created, id:", tx.id);
 
@@ -393,21 +397,26 @@ export const adminGetPending = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/wallet/admin/all
+// ─────────────────────────────────────────────────────────────────────────────
 export const adminGetAll = async (req, res) => {
   try {
     const all = await WalletTransaction.findAll({
       order: [["created_at", "DESC"]],
       limit: 100,
     });
+    console.log("[adminGetAll] Found", all.length, "transactions");
     res.json(all);
-    console.log(all);
-  } catch {
+  } catch (e) {
+    console.error("[adminGetAll] Error:", e.message);
     res.status(500).json({ message: "Failed to fetch transactions" });
   }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DELETE /api/wallet/admin/cancel/:id   [ADMIN]
+// DELETE /api/wallet/admin/cancel/:id
+// Cancels a PENDING transaction (marks as REJECTED with reason "Cancelled by admin")
 // ─────────────────────────────────────────────────────────────────────────────
 export const adminCancel = async (req, res) => {
   console.log("[adminCancel] DELETE /api/wallet/admin/cancel/:id | id:", req.params.id);

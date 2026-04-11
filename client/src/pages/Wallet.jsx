@@ -58,7 +58,7 @@ export default function WalletPage() {
   // withdraw
   const [wAgt,     setWAgt]     = useState("");
   const [wPhp,     setWPhp]     = useState("");
-  const [wEwallet, setWEwallet] = useState("gcash"); // selected e-wallet for withdraw
+  const [wEwallet, setWEwallet] = useState("gcash");
   const [wNumber,  setWNumber]  = useState("");
   const [wName,    setWName]    = useState("");
   const [wLoading, setWLoading] = useState(false);
@@ -121,7 +121,7 @@ export default function WalletPage() {
         amountAgt:   parseFloat(wAgt),
         gcashNumber: wNumber,
         gcashName:   wName,
-        ewalletType: wEwallet, // pass selected e-wallet type to backend
+        ewalletType: wEwallet,
       });
       setWDone(true);
       setWAgt(""); setWPhp(""); setWNumber(""); setWName("");
@@ -220,7 +220,7 @@ export default function WalletPage() {
 
             {/* Quick amounts */}
             <div className="flex gap-2">
-              {[100, 200, 500, 1000].map((v) => (
+              {[1, 5, 10, 50].map((v) => (
                 <button key={v} onClick={() => onDPhp(String(v))}
                   className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors
                     ${dPhp === String(v) ? "bg-green-600 text-white border-green-600" : "bg-gray-50 text-gray-600 border-gray-200 hover:border-green-400"}`}>
@@ -239,15 +239,15 @@ export default function WalletPage() {
             {dError && <ErrorBanner message={dError} />}
 
             <button onClick={handleDeposit}
-              disabled={!dPhp || parseFloat(dPhp) < 100 || dLoading}
+              disabled={!dPhp || parseFloat(dPhp) < 1 || dLoading}
               className="w-full py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
               {dLoading
                 ? <><RefreshCw size={14} className="animate-spin" />Creating payment...</>
                 : <><Smartphone size={14} />Pay {dPhp ? fmtPhp(dPhp) : ""} via E-Wallet</>}
             </button>
 
-            {dPhp && parseFloat(dPhp) < 100 && (
-              <p className="text-xs text-red-500 text-center">Minimum deposit is ₱100</p>
+            {dPhp && parseFloat(dPhp) < 1 && (
+              <p className="text-xs text-red-500 text-center">Minimum deposit is ₱1</p>
             )}
           </div>
         )}
