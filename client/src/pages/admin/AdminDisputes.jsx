@@ -18,9 +18,6 @@ const fmtAddr = (loc) => {
 };
 
 // ── Compute what each party receives when buyer is refunded ──────────────────
-// Mirrors the smart contract resolveDispute() logic exactly:
-//   pickedUpAt == 0  → full totalPrice to buyer, logistics gets 0
-//   pickedUpAt  > 0  → logistics keeps their fee, buyer gets the rest
 const computeRefundSplit = (order) => {
   const totalPrice   = parseFloat(order.totalPrice   || 0);
   const logisticsFee = parseFloat(order.logisticsFee || 0);
@@ -38,6 +35,137 @@ const computeRefundSplit = (order) => {
     totalPrice,
   };
 };
+
+// ── Confirm Modal — defined OUTSIDE AdminDisputes so it is never remounted
+//    on a re-render (which would drop textarea focus on every keystroke).
+function ResolveModal({ modal, adminNotes, setAdminNotes, setModal, onConfirm }) {
+  if (!modal) return null;
+  const { order, refundBuyer } = modal;
+  const { logisticsDidWork, logisticsFee, buyerRefund, totalPrice } = computeRefundSplit(order);
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+      onClick={() => setModal(null)}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Icon */}
+        <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 ${refundBuyer ? "bg-blue-100" : "bg-green-100"}`}>
+          {refundBuyer
+            ? <XCircle className="w-7 h-7 text-blue-600" />
+            : <CheckCircle className="w-7 h-7 text-green-600" />
+          }
+        </div>
+
+        <h3 className="text-lg font-bold text-gray-900 text-center mb-1">
+          {refundBuyer ? "Refund Buyer" : "Rule in Seller's Favor"}
+        </h3>
+
+        {/* ── Refund breakdown ── */}
+        {refundBuyer ? (
+          <div className="mb-4 space-y-2">
+            {logisticsDidWork ? (
+              <>
+                <p className="text-sm text-gray-500 text-center">
+                  Parcel was already picked up — logistics fee is retained.
+                </p>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Total escrowed</span>
+                    <span className="font-semibold">{totalPrice.toFixed(2)} AGT</span>
+                  </div>
+                  <div className="flex justify-between text-purple-700">
+                    <span>Logistics fee (retained)</span>
+                    <span className="font-semibold">− {logisticsFee.toFixed(2)} AGT</span>
+                  </div>
+                  <div className="flex justify-between border-t pt-1.5 font-bold text-blue-700">
+                    <span>Buyer refund</span>
+                    <span>{buyerRefund.toFixed(2)} AGT</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-gray-500 text-center">
+                Logistics never picked up the parcel — buyer receives a full refund of{" "}
+                <span className="font-bold text-blue-700">{totalPrice.toFixed(2)} AGT</span>.
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500 text-center mb-4">
+            Funds distributed normally — seller gets{" "}
+            <span className="font-bold text-green-700">
+              {parseFloat(order.totalProductPrice).toFixed(2)} AGT
+            </span>.
+          </p>
+        )}
+
+        {/* Parties */}
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="bg-blue-50 rounded-xl p-3 border border-blue-200 text-center">
+            <p className="text-xs text-gray-500 mb-1">Buyer</p>
+            <p className="text-sm font-semibold text-gray-900 truncate">{order.buyerName || "Unknown"}</p>
+            <p className={`text-xs font-bold mt-1 ${refundBuyer ? "text-blue-700" : "text-gray-400"}`}>
+              {refundBuyer ? `+${buyerRefund.toFixed(2)} AGT` : "No refund"}
+            </p>
+          </div>
+          <div className="bg-green-50 rounded-xl p-3 border border-green-200 text-center">
+            <p className="text-xs text-gray-500 mb-1">Seller</p>
+            <p className="text-sm font-semibold text-gray-900 truncate">{order.sellerName || "Unknown"}</p>
+            <p className={`text-xs font-bold mt-1 ${!refundBuyer ? "text-green-700" : "text-gray-400"}`}>
+              {!refundBuyer ? `+${parseFloat(order.totalProductPrice).toFixed(2)} AGT` : "No payment"}
+            </p>
+          </div>
+        </div>
+
+        {/* Logistics row — only when they actually did work */}
+        {refundBuyer && logisticsDidWork && (
+          <div className="bg-purple-50 rounded-xl p-3 border border-purple-200 text-center mb-3">
+            <p className="text-xs text-gray-500 mb-1">Logistics (picked up parcel)</p>
+            <p className="text-sm font-semibold text-gray-900">{order.logisticsName || "Logistics"}</p>
+            <p className="text-xs font-bold text-purple-700 mt-1">
+              +{logisticsFee.toFixed(2)} AGT (fee retained)
+            </p>
+          </div>
+        )}
+
+        {/* Admin notes */}
+        <div className="mb-4">
+          <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide block mb-1.5">
+            Admin Notes <span className="text-gray-400 font-normal">(optional)</span>
+          </label>
+          <textarea
+            rows={3}
+            placeholder="Add notes about your decision..."
+            value={adminNotes}
+            onChange={e => setAdminNotes(e.target.value)}
+            className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent resize-none"
+          />
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={() => setModal(null)}
+            className="flex-1 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 text-sm transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(order.id, refundBuyer)}
+            className={`flex-1 py-2.5 text-white rounded-xl font-semibold text-sm transition-colors ${
+              refundBuyer ? "bg-blue-600 hover:bg-blue-700" : "bg-green-600 hover:bg-green-700"
+            }`}
+          >
+            Confirm Resolution
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function AdminDisputes() {
   const { user }  = useUserContext();
@@ -75,136 +203,6 @@ export default function AdminDisputes() {
 
   const totalEscrow = orders.reduce((s, o) => s + parseFloat(o.totalPrice || 0), 0);
 
-  // ── Confirm Modal ─────────────────────────────────────────────────────────
-  const ResolveModal = () => {
-    if (!modal) return null;
-    const { order, refundBuyer } = modal;
-    const { logisticsDidWork, logisticsFee, buyerRefund, totalPrice } = computeRefundSplit(order);
-
-    return (
-      <div
-        className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-        onClick={() => setModal(null)}
-      >
-        <div
-          className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6"
-          onClick={e => e.stopPropagation()}
-        >
-          {/* Icon */}
-          <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 ${refundBuyer ? "bg-blue-100" : "bg-green-100"}`}>
-            {refundBuyer
-              ? <XCircle className="w-7 h-7 text-blue-600" />
-              : <CheckCircle className="w-7 h-7 text-green-600" />
-            }
-          </div>
-
-          <h3 className="text-lg font-bold text-gray-900 text-center mb-1">
-            {refundBuyer ? "Refund Buyer" : "Rule in Seller's Favor"}
-          </h3>
-
-          {/* ── Refund breakdown ─────────────────────────────────────────── */}
-          {refundBuyer ? (
-            <div className="mb-4 space-y-2">
-              {logisticsDidWork ? (
-                <>
-                  <p className="text-sm text-gray-500 text-center">
-                    Parcel was already picked up — logistics fee is retained.
-                  </p>
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs space-y-1.5">
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Total escrowed</span>
-                      <span className="font-semibold">{totalPrice.toFixed(2)} AGT</span>
-                    </div>
-                    <div className="flex justify-between text-purple-700">
-                      <span>Logistics fee (retained)</span>
-                      <span className="font-semibold">− {logisticsFee.toFixed(2)} AGT</span>
-                    </div>
-                    <div className="flex justify-between border-t pt-1.5 font-bold text-blue-700">
-                      <span>Buyer refund</span>
-                      <span>{buyerRefund.toFixed(2)} AGT</span>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <p className="text-sm text-gray-500 text-center">
-                  Logistics never picked up the parcel — buyer receives a full refund of{" "}
-                  <span className="font-bold text-blue-700">{totalPrice.toFixed(2)} AGT</span>.
-                </p>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500 text-center mb-4">
-              Funds distributed normally — seller gets{" "}
-              <span className="font-bold text-green-700">
-                {parseFloat(order.totalProductPrice).toFixed(2)} AGT
-              </span>.
-            </p>
-          )}
-
-          {/* Parties */}
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <div className="bg-blue-50 rounded-xl p-3 border border-blue-200 text-center">
-              <p className="text-xs text-gray-500 mb-1">Buyer</p>
-              <p className="text-sm font-semibold text-gray-900 truncate">{order.buyerName || "Unknown"}</p>
-              <p className={`text-xs font-bold mt-1 ${refundBuyer ? "text-blue-700" : "text-gray-400"}`}>
-                {refundBuyer ? `+${buyerRefund.toFixed(2)} AGT` : "No refund"}
-              </p>
-            </div>
-            <div className="bg-green-50 rounded-xl p-3 border border-green-200 text-center">
-              <p className="text-xs text-gray-500 mb-1">Seller</p>
-              <p className="text-sm font-semibold text-gray-900 truncate">{order.sellerName || "Unknown"}</p>
-              <p className={`text-xs font-bold mt-1 ${!refundBuyer ? "text-green-700" : "text-gray-400"}`}>
-                {!refundBuyer ? `+${parseFloat(order.totalProductPrice).toFixed(2)} AGT` : "No payment"}
-              </p>
-            </div>
-          </div>
-
-          {/* Logistics row — only when they actually did work */}
-          {refundBuyer && logisticsDidWork && (
-            <div className="bg-purple-50 rounded-xl p-3 border border-purple-200 text-center mb-3">
-              <p className="text-xs text-gray-500 mb-1">Logistics (picked up parcel)</p>
-              <p className="text-sm font-semibold text-gray-900">{order.logisticsName || "Logistics"}</p>
-              <p className="text-xs font-bold text-purple-700 mt-1">
-                +{logisticsFee.toFixed(2)} AGT (fee retained)
-              </p>
-            </div>
-          )}
-
-          {/* Admin notes */}
-          <div className="mb-4">
-            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide block mb-1.5">
-              Admin Notes <span className="text-gray-400 font-normal">(optional)</span>
-            </label>
-            <textarea
-              rows={3}
-              placeholder="Add notes about your decision..."
-              value={adminNotes}
-              onChange={e => setAdminNotes(e.target.value)}
-              className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent resize-none"
-            />
-          </div>
-
-          <div className="flex gap-3">
-            <button
-              onClick={() => setModal(null)}
-              className="flex-1 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 text-sm transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => handleResolve(order.id, refundBuyer)}
-              className={`flex-1 py-2.5 text-white rounded-xl font-semibold text-sm transition-colors ${
-                refundBuyer ? "bg-blue-600 hover:bg-blue-700" : "bg-green-600 hover:bg-green-700"
-              }`}
-            >
-              Confirm Resolution
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   if (loading) return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center">
       <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
@@ -213,7 +211,13 @@ export default function AdminDisputes() {
 
   return (
     <div className="p-6 bg-gray-100 min-h-screen">
-      <ResolveModal />
+      <ResolveModal
+        modal={modal}
+        adminNotes={adminNotes}
+        setAdminNotes={setAdminNotes}
+        setModal={setModal}
+        onConfirm={handleResolve}
+      />
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
@@ -336,7 +340,7 @@ export default function AdminDisputes() {
                         </div>
                       </div>
 
-                      {/* ── Pickup status badge ─────────────────────────────────── */}
+                      {/* ── Pickup status badge ── */}
                       <div className={`rounded-xl p-2.5 border text-xs flex items-center gap-2 ${
                         logisticsDidWork
                           ? "bg-purple-50 border-purple-200 text-purple-700"

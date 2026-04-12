@@ -28,8 +28,8 @@ const saveTracking = async (orderId, { latitude, longitude, isTracking }) => {
 export const initSocket = (httpServer) => {
   io = new Server(httpServer, {
     cors: {
-      origin: ["https://agritrust.shop"],
-      methods: ["GET", "POST"],
+      origin: ["https://agritrust.shop", "https://www.agritrust.shop"],
+      methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
       credentials: true,
     },
   });

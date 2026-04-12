@@ -21,7 +21,9 @@ const STATUS_TABS = [
   { id: 1, label: "Paid" }, { id: 2, label: "Shipped" },
   { id: 3, label: "Picked Up" }, { id: 4, label: "Out for Delivery" },
   { id: 5, label: "Delivered" }, { id: 6, label: "Completed" },
-  { id: 7, label: "Disputed" }, { id: 10, label: "Cancelled" },
+  { id: 7, label: "Disputed" }, { id: 8, label: "Refunded" },
+  { id: 10, label: "Cancelled" },
+
 ];
 
 const STATUS_CONFIG = {

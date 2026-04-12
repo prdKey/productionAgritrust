@@ -15,15 +15,37 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
+const safeFloat = (val) => { const n = parseFloat(val); return isNaN(n) ? 0 : n; };
+const safeName  = (val) => (val && String(val).trim()) ? String(val).trim() : "Unknown";
+
+// Get display name from order — uses lineItems first since Order struct has no name field
+const getOrderName = (order) => {
+  const items = order.lineItems || [];
+  if (items.length === 1) return safeName(items[0].name);
+  if (items.length > 1)  return `${safeName(items[0].name)} +${items.length - 1} more`;
+  return safeName(order.name); // fallback
+};
+
+// Sum quantity across all line items
+const getOrderQty = (order) => {
+  const items = order.lineItems || [];
+  if (items.length > 0) return items.reduce((s, i) => s + (parseInt(i.quantity) || 0), 0);
+  return parseInt(order.quantity) || 0;
+};
+
+const formatDate = (timestamp) => {
+  if (!timestamp || timestamp === 0) return "N/A";
+  return new Date(timestamp * 1000).toLocaleDateString();
+};
+
 export default function BuyerDashboard() {
   const { user } = useUserContext();
   const navigate = useNavigate();
-  const [orders, setOrders] = useState([]);
+  const [orders,  setOrders]  = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
-    
     const fetchOrders = async () => {
       try {
         setLoading(true);
@@ -35,36 +57,45 @@ export default function BuyerDashboard() {
         setLoading(false);
       }
     };
-    
     fetchOrders();
   }, [user]);
 
-  // Calculate stats
-  const totalOrders = orders.length;
-  const pendingOrders = orders.filter(o => o.status === 1).length;
+  // ── Stats ─────────────────────────────────────────────────────────────────
+  const totalOrders     = orders.length;
+  const pendingOrders   = orders.filter(o => o.status === 1).length;
   const inTransitOrders = orders.filter(o => o.status >= 2 && o.status <= 4).length;
   const deliveredOrders = orders.filter(o => o.status === 5).length;
   const completedOrders = orders.filter(o => o.status === 6).length;
-  
-  const totalSpent = orders
-    .filter(o => o.status >= 1)
-    .reduce((sum, o) => sum + parseFloat(o.totalPrice || 0), 0);
 
-  const totalItems = orders.reduce((sum, o) => sum + o.quantity, 0);
+  // Total spent:
+  // - Refunded (8): buyer only effectively spent logisticsFee if logistics picked it up
+  // - Cancelled (9, 10) & Disputed (7): not counted
+  const totalSpent = orders.reduce((sum, o) => {
+    if (o.status === 8) {
+      const pickedUp = o.pickedUpAt && o.pickedUpAt > 0;
+      return sum + (pickedUp ? safeFloat(o.logisticsFee) : 0);
+    }
+    if ([7, 9, 10].includes(o.status)) return sum;
+    return sum + safeFloat(o.totalPrice);
+  }, 0);
 
-  // Recent orders (last 5)
-  const recentOrders = [...orders]
-    .sort((a, b) => b.id - a.id)
-    .slice(0, 5);
+  const totalItems = orders.reduce((sum, o) => sum + getOrderQty(o), 0);
 
-  // Active deliveries (orders in transit)
+  const recentOrders     = [...orders].sort((a, b) => b.id - a.id).slice(0, 5);
   const activeDeliveries = orders.filter(o => o.status >= 2 && o.status <= 5);
 
-  // Get category breakdown
   const categoryStats = {};
   orders.forEach(order => {
     if (order.status >= 1) {
-      categoryStats[order.category] = (categoryStats[order.category] || 0) + 1;
+      // Get categories from lineItems if available
+      const items = order.lineItems || [];
+      if (items.length > 0) {
+        items.forEach(item => {
+          if (item.category) categoryStats[item.category] = (categoryStats[item.category] || 0) + 1;
+        });
+      } else if (order.category) {
+        categoryStats[order.category] = (categoryStats[order.category] || 0) + 1;
+      }
     }
   });
   const topCategories = Object.entries(categoryStats)
@@ -73,12 +104,16 @@ export default function BuyerDashboard() {
 
   const getStatusInfo = (status) => {
     const statusMap = {
-      1: { label: "PAID", color: "bg-yellow-100 text-yellow-800", icon: Clock },
-      2: { label: "SHIPPED", color: "bg-blue-100 text-blue-800", icon: Package },
-      3: { label: "PICKED UP", color: "bg-indigo-100 text-indigo-800", icon: Truck },
-      4: { label: "OUT FOR DELIVERY", color: "bg-purple-100 text-purple-800", icon: Truck },
-      5: { label: "DELIVERED", color: "bg-teal-100 text-teal-800", icon: MapPin },
-      6: { label: "COMPLETED", color: "bg-green-100 text-green-800", icon: CheckCircle },
+      1:  { label: "PAID",             color: "bg-yellow-100 text-yellow-800", icon: Clock       },
+      2:  { label: "SHIPPED",          color: "bg-blue-100 text-blue-800",     icon: Package     },
+      3:  { label: "PICKED UP",        color: "bg-indigo-100 text-indigo-800", icon: Truck       },
+      4:  { label: "OUT FOR DELIVERY", color: "bg-purple-100 text-purple-800", icon: Truck       },
+      5:  { label: "DELIVERED",        color: "bg-teal-100 text-teal-800",     icon: MapPin      },
+      6:  { label: "COMPLETED",        color: "bg-green-100 text-green-800",   icon: CheckCircle },
+      7:  { label: "DISPUTED",         color: "bg-red-100 text-red-800",       icon: Eye         },
+      8:  { label: "REFUNDED",         color: "bg-orange-100 text-orange-800", icon: Eye         },
+      9:  { label: "CANCELLED",        color: "bg-gray-100 text-gray-800",     icon: Eye         },
+      10: { label: "CANCELLED",        color: "bg-gray-100 text-gray-800",     icon: Eye         },
     };
     return statusMap[status] || { label: "UNKNOWN", color: "bg-gray-100 text-gray-800", icon: Package };
   };
@@ -90,12 +125,6 @@ export default function BuyerDashboard() {
         {info.label}
       </span>
     );
-  };
-
-  const formatDate = (timestamp) => {
-    if (!timestamp) return "N/A";
-    const date = new Date(timestamp * 1000);
-    return date.toLocaleDateString();
   };
 
   if (loading) {
@@ -113,21 +142,18 @@ export default function BuyerDashboard() {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900">Buyer Dashboard</h1>
-        <p className="text-gray-600 mt-2">Welcome back, {user?.firstName}! Track your orders and purchases.</p>
+        <p className="text-gray-600 mt-2">Welcome back, {safeName(user?.firstName)}! Track your orders and purchases.</p>
       </div>
 
       {/* Main Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {/* Total Spent */}
         <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-6 text-white shadow-lg">
           <div className="flex items-start justify-between mb-4">
             <div>
               <p className="text-green-100 text-sm font-medium">Total Spent</p>
               <p className="text-3xl font-bold mt-2">{totalSpent.toFixed(2)} AGT</p>
             </div>
-            <div className="bg-white/20 p-3 rounded-lg">
-              <TrendingUp size={24} />
-            </div>
+            <div className="bg-white/20 p-3 rounded-lg"><TrendingUp size={24} /></div>
           </div>
           <div className="flex items-center gap-2 text-green-100 text-sm">
             <ShoppingBag size={16} />
@@ -135,16 +161,13 @@ export default function BuyerDashboard() {
           </div>
         </div>
 
-        {/* Total Orders */}
         <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-6 text-white shadow-lg">
           <div className="flex items-start justify-between mb-4">
             <div>
               <p className="text-blue-100 text-sm font-medium">Total Orders</p>
               <p className="text-3xl font-bold mt-2">{totalOrders}</p>
             </div>
-            <div className="bg-white/20 p-3 rounded-lg">
-              <Package size={24} />
-            </div>
+            <div className="bg-white/20 p-3 rounded-lg"><Package size={24} /></div>
           </div>
           <div className="flex items-center gap-2 text-blue-100 text-sm">
             <CheckCircle size={16} />
@@ -152,16 +175,13 @@ export default function BuyerDashboard() {
           </div>
         </div>
 
-        {/* In Transit */}
         <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-6 text-white shadow-lg">
           <div className="flex items-start justify-between mb-4">
             <div>
               <p className="text-purple-100 text-sm font-medium">In Transit</p>
               <p className="text-3xl font-bold mt-2">{inTransitOrders}</p>
             </div>
-            <div className="bg-white/20 p-3 rounded-lg">
-              <Truck size={24} />
-            </div>
+            <div className="bg-white/20 p-3 rounded-lg"><Truck size={24} /></div>
           </div>
           <div className="flex items-center gap-2 text-purple-100 text-sm">
             <Clock size={16} />
@@ -169,16 +189,13 @@ export default function BuyerDashboard() {
           </div>
         </div>
 
-        {/* Pending */}
         <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg p-6 text-white shadow-lg">
           <div className="flex items-start justify-between mb-4">
             <div>
               <p className="text-orange-100 text-sm font-medium">Awaiting Shipment</p>
               <p className="text-3xl font-bold mt-2">{pendingOrders}</p>
             </div>
-            <div className="bg-white/20 p-3 rounded-lg">
-              <Clock size={24} />
-            </div>
+            <div className="bg-white/20 p-3 rounded-lg"><Clock size={24} /></div>
           </div>
           <div className="flex items-center gap-2 text-orange-100 text-sm">
             <Package size={16} />
@@ -205,9 +222,7 @@ export default function BuyerDashboard() {
         </div>
         <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Categories</p>
-          <p className="text-2xl font-bold text-purple-600 mt-1">
-            {Object.keys(categoryStats).length}
-          </p>
+          <p className="text-2xl font-bold text-purple-600 mt-1">{Object.keys(categoryStats).length}</p>
         </div>
       </div>
 
@@ -218,18 +233,12 @@ export default function BuyerDashboard() {
           <div className="p-6 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <Truck size={20} className="text-purple-600" />
-                Active Deliveries
+                <Truck size={20} className="text-purple-600" /> Active Deliveries
               </h2>
-              <button
-                onClick={() => navigate('/user/purchase')}
-                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-              >
-                View All
-              </button>
+              <button onClick={() => navigate('/user/purchase')}
+                className="text-sm text-blue-600 hover:text-blue-700 font-medium">View All</button>
             </div>
           </div>
-          
           <div className="divide-y divide-gray-100 max-h-96 overflow-y-auto">
             {activeDeliveries.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
@@ -247,20 +256,17 @@ export default function BuyerDashboard() {
                           <StatusIcon className="text-purple-600" size={20} />
                         </div>
                         <div className="flex-1">
-                          <p className="font-semibold text-gray-900">{order.name}</p>
+                          <p className="font-semibold text-gray-900">{getOrderName(order)}</p>
                           <p className="text-sm text-gray-600">Order #{order.id}</p>
                         </div>
                       </div>
                       {getStatusBadge(order.status)}
                     </div>
                     <div className="flex items-center justify-between text-sm mt-3 ml-11">
-                      <span className="text-gray-500">{order.quantity} units</span>
-                      <button
-                        onClick={() => navigate(`/track-order/${order.id}`)}
-                        className="text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
-                      >
-                        <MapPin size={14} />
-                        Track
+                      <span className="text-gray-500">{getOrderQty(order)} units</span>
+                      <button onClick={() => navigate(`/track-order/${order.id}`)}
+                        className="text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1">
+                        <MapPin size={14} /> Track
                       </button>
                     </div>
                   </div>
@@ -275,18 +281,12 @@ export default function BuyerDashboard() {
           <div className="p-6 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <Package size={20} className="text-blue-600" />
-                Recent Orders
+                <Package size={20} className="text-blue-600" /> Recent Orders
               </h2>
-              <button
-                onClick={() => navigate('/user/purchase')}
-                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-              >
-                View All
-              </button>
+              <button onClick={() => navigate('/user/purchase')}
+                className="text-sm text-blue-600 hover:text-blue-700 font-medium">View All</button>
             </div>
           </div>
-          
           <div className="divide-y divide-gray-100 max-h-96 overflow-y-auto">
             {recentOrders.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
@@ -298,15 +298,15 @@ export default function BuyerDashboard() {
                 <div key={order.id} className="p-4 hover:bg-gray-50 transition-colors">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1">
-                      <p className="font-semibold text-gray-900">{order.name}</p>
+                      <p className="font-semibold text-gray-900">{getOrderName(order)}</p>
                       <p className="text-sm text-gray-600">Order #{order.id}</p>
                     </div>
                     {getStatusBadge(order.status)}
                   </div>
                   <div className="flex items-center justify-between text-sm mt-2">
-                    <span className="text-gray-500">{order.quantity} units</span>
+                    <span className="text-gray-500">{getOrderQty(order)} units</span>
                     <div className="flex items-center gap-3">
-                      <span className="font-semibold text-green-600">{order.totalPrice} AGT</span>
+                      <span className="font-semibold text-green-600">{safeFloat(order.totalPrice).toFixed(2)} AGT</span>
                       <span className="text-gray-400">{formatDate(order.createdAt)}</span>
                     </div>
                   </div>
@@ -321,8 +321,7 @@ export default function BuyerDashboard() {
       {topCategories.length > 0 && (
         <div className="mt-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <TrendingUp size={20} className="text-green-600" />
-            Your Top Categories
+            <TrendingUp size={20} className="text-green-600" /> Your Top Categories
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {topCategories.map(([category, count], index) => (
@@ -346,13 +345,11 @@ export default function BuyerDashboard() {
             <div className="flex-1">
               <h3 className="font-semibold text-teal-900">Action Required</h3>
               <p className="text-sm text-teal-700 mt-1">
-                You have {deliveredOrders} delivered order{deliveredOrders > 1 ? 's' : ''} waiting for confirmation.
+                You have {deliveredOrders} delivered order{deliveredOrders > 1 ? "s" : ""} waiting for confirmation.
                 Please confirm receipt to complete your orders.
               </p>
-              <button
-                onClick={() => navigate('/orders')}
-                className="mt-3 text-sm font-medium text-teal-700 hover:text-teal-800 underline"
-              >
+              <button onClick={() => navigate('/orders')}
+                className="mt-3 text-sm font-medium text-teal-700 hover:text-teal-800 underline">
                 Confirm Orders
               </button>
             </div>
@@ -362,10 +359,8 @@ export default function BuyerDashboard() {
 
       {/* Quick Actions */}
       <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <button
-          onClick={() => navigate('/')}
-          className="bg-white border-2 border-gray-200 hover:border-green-500 rounded-lg p-6 transition-all duration-200 group"
-        >
+        <button onClick={() => navigate('/')}
+          className="bg-white border-2 border-gray-200 hover:border-green-500 rounded-lg p-6 transition-all duration-200 group">
           <div className="flex items-center gap-4">
             <div className="bg-green-100 p-3 rounded-lg group-hover:bg-green-600 transition-colors">
               <Store className="text-green-600 group-hover:text-white" size={24} />
@@ -377,10 +372,8 @@ export default function BuyerDashboard() {
           </div>
         </button>
 
-        <button
-          onClick={() => navigate('/user/purchase')}
-          className="bg-white border-2 border-gray-200 hover:border-blue-500 rounded-lg p-6 transition-all duration-200 group"
-        >
+        <button onClick={() => navigate('/user/purchase')}
+          className="bg-white border-2 border-gray-200 hover:border-blue-500 rounded-lg p-6 transition-all duration-200 group">
           <div className="flex items-center gap-4">
             <div className="bg-blue-100 p-3 rounded-lg group-hover:bg-blue-600 transition-colors">
               <Package className="text-blue-600 group-hover:text-white" size={24} />
@@ -392,10 +385,8 @@ export default function BuyerDashboard() {
           </div>
         </button>
 
-        <button
-          onClick={() => navigate('/user/purchase')}
-          className="bg-white border-2 border-gray-200 hover:border-purple-500 rounded-lg p-6 transition-all duration-200 group"
-        >
+        <button onClick={() => navigate('/user/purchase')}
+          className="bg-white border-2 border-gray-200 hover:border-purple-500 rounded-lg p-6 transition-all duration-200 group">
           <div className="flex items-center gap-4">
             <div className="bg-purple-100 p-3 rounded-lg group-hover:bg-purple-600 transition-colors">
               <Search className="text-purple-600 group-hover:text-white" size={24} />

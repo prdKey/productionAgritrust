@@ -15,14 +15,18 @@ const fmtAddr = (loc) => {
   return `${loc.barangay}, ${loc.city}`;
 };
 
+// Returns the best available timestamp for a completed/refunded order
+const getCompletionDate = (order) =>
+  order.completedAt || order.deliveredAt || order.pickedUpAt || order.createdAt;
+
 export default function LogisticsDashboard() {
   const { user }  = useUserContext();
   const navigate  = useNavigate();
 
-  const [myOrders, setMyOrders]           = useState([]);
-  const [available, setAvailable]         = useState([]);
-  const [loading, setLoading]             = useState(true);
-  const [acceptingId, setAcceptingId]     = useState(null);
+  const [myOrders,    setMyOrders]    = useState([]);
+  const [available,   setAvailable]   = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [acceptingId, setAcceptingId] = useState(null);
 
   const fetchAll = async () => {
     if (!user) return;
@@ -51,19 +55,33 @@ export default function LogisticsDashboard() {
   };
 
   // ── Stats ──────────────────────────────────────────────────────────────────
-  const totalDeliveries   = myOrders.length;
-  const completed         = myOrders.filter(o => o.status === 6);
-  const inProgress        = myOrders.filter(o => o.status >= 2 && o.status <= 4);
-  const readyForPickup    = myOrders.filter(o => o.status === 2);
-  const outForDelivery    = myOrders.filter(o => o.status === 4);
-  const delivered         = myOrders.filter(o => o.status === 5);
+  const totalDeliveries = myOrders.length;
+  const completed       = myOrders.filter(o => o.status === 6 || o.status === 8); // status 8 (Refunded) = earned na rin
+  const inProgress      = myOrders.filter(o => o.status >= 2 && o.status <= 4);
+  const readyForPickup  = myOrders.filter(o => o.status === 2);
+  const outForDelivery  = myOrders.filter(o => o.status === 4);
+  const delivered       = myOrders.filter(o => o.status === 5);
 
-  const totalEarned       = completed.reduce((s, o) => s + parseFloat(o.logisticsFee || 0), 0);
-  const pendingPayout     = myOrders.filter(o => o.status === 5).reduce((s, o) => s + parseFloat(o.logisticsFee || 0), 0);
-  const inEscrow          = inProgress.reduce((s, o) => s + parseFloat(o.logisticsFee || 0), 0);
+  const totalEarned   = completed.reduce((s, o) => s + parseFloat(o.logisticsFee || 0), 0);
+  const pendingPayout = myOrders.filter(o => o.status === 5).reduce((s, o) => s + parseFloat(o.logisticsFee || 0), 0);
+  const inEscrow      = inProgress.reduce((s, o) => s + parseFloat(o.logisticsFee || 0), 0);
 
-  const recentCompleted   = [...completed].sort((a, b) => b.completedAt - a.completedAt).slice(0, 4);
-  const activeJobs        = myOrders.filter(o => o.status >= 2 && o.status <= 5).sort((a, b) => b.id - a.id);
+  const recentCompleted = [...completed]
+    .sort((a, b) => getCompletionDate(b) - getCompletionDate(a))
+    .slice(0, 4);
+  const activeJobs = myOrders.filter(o => o.status >= 2 && o.status <= 5).sort((a, b) => b.id - a.id);
+
+  const getJobStatusConfig = (status) => {
+    const map = {
+      2: { label: "Ready for Pickup", color: "bg-yellow-100 text-yellow-700", dot: "bg-yellow-400" },
+      3: { label: "Picked Up",        color: "bg-indigo-100 text-indigo-700", dot: "bg-indigo-400" },
+      4: { label: "Out for Delivery", color: "bg-purple-100 text-purple-700", dot: "bg-purple-400" },
+      5: { label: "Delivered",        color: "bg-teal-100 text-teal-700",     dot: "bg-teal-400"   },
+      6: { label: "Completed",        color: "bg-green-100 text-green-700",   dot: "bg-green-400"  },
+      8: { label: "Refunded",         color: "bg-orange-100 text-orange-700", dot: "bg-orange-400" },
+    };
+    return map[status] || { label: "Active", color: "bg-gray-100 text-gray-700", dot: "bg-gray-400" };
+  };
 
   if (loading) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -160,10 +178,10 @@ export default function LogisticsDashboard() {
       {/* Secondary row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {[
-          { label: "Ready to Pick Up", val: readyForPickup.length, color: "text-yellow-600" },
-          { label: "Out for Delivery", val: outForDelivery.length, color: "text-purple-600" },
-          { label: "Awaiting Confirm", val: delivered.length,      color: "text-teal-600" },
-          { label: "In Escrow",        val: `${inEscrow.toFixed(2)} AGT`, color: "text-blue-600" },
+          { label: "Ready to Pick Up", val: readyForPickup.length,          color: "text-yellow-600" },
+          { label: "Out for Delivery", val: outForDelivery.length,          color: "text-purple-600" },
+          { label: "Awaiting Confirm", val: delivered.length,               color: "text-teal-600"   },
+          { label: "In Escrow",        val: `${inEscrow.toFixed(2)} AGT`,   color: "text-blue-600"  },
         ].map(({ label, val, color }) => (
           <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">{label}</p>
@@ -194,13 +212,7 @@ export default function LogisticsDashboard() {
                   className="mt-3 text-xs text-green-600 font-semibold hover:text-green-700">Browse available jobs →</button>
               </div>
             ) : activeJobs.slice(0, 5).map(order => {
-              const statusConfig = {
-                2: { label: "Ready for Pickup", color: "bg-yellow-100 text-yellow-700", dot: "bg-yellow-400" },
-                3: { label: "Picked Up",        color: "bg-indigo-100 text-indigo-700", dot: "bg-indigo-400" },
-                4: { label: "Out for Delivery", color: "bg-purple-100 text-purple-700", dot: "bg-purple-400" },
-                5: { label: "Delivered",        color: "bg-teal-100 text-teal-700",     dot: "bg-teal-400" },
-              };
-              const cfg = statusConfig[order.status] || { label: "Active", color: "bg-gray-100 text-gray-700", dot: "bg-gray-400" };
+              const cfg = getJobStatusConfig(order.status);
               return (
                 <div key={order.id} className="px-6 py-4 hover:bg-gray-50/60 transition-colors">
                   <div className="flex items-center gap-3">
@@ -301,10 +313,13 @@ export default function LogisticsDashboard() {
                 <div className="p-6 text-center text-gray-400 text-sm">No completed deliveries yet</div>
               ) : recentCompleted.map(order => (
                 <div key={order.id} className="px-6 py-3 flex items-center gap-3">
-                  <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                  <CheckCircle className={`w-4 h-4 flex-shrink-0 ${order.status === 8 ? "text-orange-400" : "text-green-500"}`} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-800 truncate">{order.name}</p>
-                    <p className="text-xs text-gray-400">Completed {fmtDate(order.completedAt)}</p>
+                    <p className="text-xs text-gray-400">
+                      {order.status === 8 ? "Refunded" : "Completed"}{" "}
+                      {fmtDate(getCompletionDate(order))}
+                    </p>
                   </div>
                   <p className="text-sm font-bold text-green-600 flex-shrink-0">+{parseFloat(order.logisticsFee).toFixed(2)} AGT</p>
                 </div>

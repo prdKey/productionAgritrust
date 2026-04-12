@@ -31,6 +31,8 @@ const getStatusBadge = (status) => {
     6: { label: "COMPLETED",       color: "bg-green-100 text-green-800" },
     7: { label: "DISPUTED",        color: "bg-red-100 text-red-800" },
     8: { label: "REFUNDED",        color: "bg-gray-100 text-gray-800" },
+    9: { label: "CANCELLED",       color: "bg-gray-100 text-gray-800" },
+    10: { label: "CANCELLED",      color: "bg-gray-100 text-gray-800" },
   };
   const { label, color } = cfg[status] ?? { label: "UNKNOWN", color: "bg-gray-100 text-gray-800" };
   return (

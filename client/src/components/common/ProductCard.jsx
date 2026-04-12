@@ -3,7 +3,6 @@ import { MapPin, ShoppingCart } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const ProductCard = ({ product }) => {
-  console.log(product)
   const navigate     = useNavigate();
   const avgRating    = product.averageRating ?? 0;
   const totalRatings = product.totalRatings  ?? 0;
