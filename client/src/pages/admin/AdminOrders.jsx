@@ -22,17 +22,18 @@ const STATUS_CONFIG = {
   10: { label: "Cancelled",        color: "bg-gray-100 text-gray-600 border-gray-200",        dot: "bg-gray-400"    },
 };
 
+// ── "cancelled" tab matches both status 9 and 10 ─────────────────────────────
 const STATUS_TABS = [
-  { id: "all", label: "All" },
-  { id: 1,  label: "Paid"             },
-  { id: 2,  label: "Shipped"          },
-  { id: 3,  label: "Picked Up"        },
-  { id: 4,  label: "Out for Delivery" },
-  { id: 5,  label: "Delivered"        },
-  { id: 6,  label: "Completed"        },
-  { id: 7,  label: "Disputed"         },
-  { id: 8,  label: "Refunded"         },
-  { id: 9,  label: "Cancelled"        },
+  { id: "all",       label: "All"             },
+  { id: 1,           label: "Paid"            },
+  { id: 2,           label: "Shipped"         },
+  { id: 3,           label: "Picked Up"       },
+  { id: 4,           label: "Out for Delivery"},
+  { id: 5,           label: "Delivered"       },
+  { id: 6,           label: "Completed"       },
+  { id: 7,           label: "Disputed"        },
+  { id: 8,           label: "Refunded"        },
+  { id: "cancelled", label: "Cancelled"       },
 ];
 
 const fmtTime = (ts) =>
@@ -88,6 +89,20 @@ function Pagination({ page, totalPages, onPage }) {
   );
 }
 
+// ── Helper: does an order match the active tab? ───────────────────────────────
+const matchesTab = (order, tab) => {
+  if (tab === "all") return true;
+  if (tab === "cancelled") return order.status === 9 || order.status === 10;
+  return order.status === tab;
+};
+
+// ── Helper: count for tab badge ───────────────────────────────────────────────
+const countForTab = (orders, tab) => {
+  if (tab === "all") return orders.length;
+  if (tab === "cancelled") return orders.filter(o => o.status === 9 || o.status === 10).length;
+  return orders.filter(o => o.status === tab).length;
+};
+
 export default function AdminOrders() {
   const [orders, setOrders]         = useState([]);
   const [loading, setLoading]       = useState(true);
@@ -113,12 +128,12 @@ export default function AdminOrders() {
     active:    orders.filter(o => [1,2,3,4,5].includes(o.status)).length,
     completed: orders.filter(o => o.status === 6).length,
     disputed:  orders.filter(o => o.status === 7).length,
-    cancelled: orders.filter(o => [9,10].includes(o.status)).length,
+    cancelled: orders.filter(o => o.status === 9 || o.status === 10).length,
     revenue:   orders.filter(o => o.status === 6).reduce((s, o) => s + parseFloat(o.totalPrice || 0), 0),
   };
 
   const filtered = orders
-    .filter(o => activeTab === "all" || o.status === activeTab)
+    .filter(o => matchesTab(o, activeTab))
     .filter(o => {
       if (!search.trim()) return true;
       const q = search.toLowerCase();
@@ -145,7 +160,7 @@ export default function AdminOrders() {
     <div className="bg-gray-100 min-h-screen">
       <div className="max-w-5xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8">
 
-        {/* ── Header ──────────────────────────────────────────────────────── */}
+        {/* ── Header ── */}
         <div className="flex items-center justify-between mb-5 sm:mb-6 gap-3">
           <div>
             <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 leading-tight">
@@ -160,8 +175,7 @@ export default function AdminOrders() {
           </button>
         </div>
 
-        {/* ── Stat cards ──────────────────────────────────────────────────── */}
-        {/* 2-col on mobile, 3-col on sm, 6-col on lg */}
+        {/* ── Stat cards ── */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3 mb-5 sm:mb-6">
           {[
             { label: "Total",     value: stats.total,                       color: "text-gray-900",  bg: "bg-gray-50",   icon: <Package className="w-4 h-4" />     },
@@ -181,7 +195,7 @@ export default function AdminOrders() {
           ))}
         </div>
 
-        {/* ── Search ──────────────────────────────────────────────────────── */}
+        {/* ── Search ── */}
         <div className="flex items-center gap-2 mb-3 sm:mb-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
@@ -201,16 +215,13 @@ export default function AdminOrders() {
           )}
         </div>
 
-        {/* ── Status tabs ─────────────────────────────────────────────────── */}
+        {/* ── Status tabs ── */}
         <div className="relative mb-4">
-          {/* Fade hint on right edge */}
           <div className="pointer-events-none absolute right-0 top-0 bottom-1 w-10 bg-gradient-to-l from-gray-100 to-transparent z-10 rounded-r-xl" />
           <div className="overflow-x-auto pb-1" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
             <div className="flex gap-1.5 min-w-max">
               {STATUS_TABS.map(tab => {
-                const count = tab.id === "all"
-                  ? orders.length
-                  : orders.filter(o => o.status === tab.id).length;
+                const count    = countForTab(orders, tab.id);
                 const isActive = activeTab === tab.id;
                 return (
                   <button
@@ -234,14 +245,14 @@ export default function AdminOrders() {
           </div>
         </div>
 
-        {/* ── Result count ────────────────────────────────────────────────── */}
+        {/* ── Result count ── */}
         {filtered.length > 0 && (
           <p className="text-xs text-gray-400 mb-3">
             {filtered.length} order{filtered.length !== 1 ? "s" : ""} · Page {page} of {totalPages}
           </p>
         )}
 
-        {/* ── Empty state ─────────────────────────────────────────────────── */}
+        {/* ── Empty state ── */}
         {filtered.length === 0 ? (
           <div className="bg-white rounded-xl shadow-sm p-10 sm:p-16 text-center border border-gray-200">
             <Package className="w-12 h-12 mx-auto text-gray-300 mb-4" />
@@ -266,10 +277,9 @@ export default function AdminOrders() {
                     {/* Status color bar */}
                     <div className={`h-1 w-full ${cfg.dot}`} />
 
-                    {/* ── Card body: stacks on mobile, side-by-side on lg ── */}
                     <div className="flex flex-col lg:flex-row">
 
-                      {/* ── Left panel ─────────────────────────────────── */}
+                      {/* ── Left panel ── */}
                       <div className="bg-gradient-to-br from-gray-50 to-slate-50 p-4 sm:p-5 border-b lg:border-b-0 lg:border-r border-gray-200 lg:w-56 xl:w-64 lg:flex-shrink-0">
 
                         {/* Order ID + status */}
@@ -329,10 +339,10 @@ export default function AdminOrders() {
                         </div>
                       </div>
 
-                      {/* ── Right panel ────────────────────────────────── */}
+                      {/* ── Right panel ── */}
                       <div className="flex-1 p-4 sm:p-5 min-w-0">
 
-                        {/* Parties grid: 1-col mobile → 3-col sm+ */}
+                        {/* Parties grid */}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 mb-4">
 
                           {/* Buyer */}
@@ -402,12 +412,12 @@ export default function AdminOrders() {
                                   : "bg-gray-100 text-gray-600"
                               }`}>{dispute.status}</span>
                             </p>
-                            {dispute.reason    && <p className="text-xs text-gray-700 italic break-words">"{dispute.reason}"</p>}
+                            {dispute.reason     && <p className="text-xs text-gray-700 italic break-words">"{dispute.reason}"</p>}
                             {dispute.adminNotes && <p className="text-xs text-gray-500 mt-1 break-words">Admin: "{dispute.adminNotes}"</p>}
                           </div>
                         )}
 
-                        {/* Footer row: timestamp + expand button */}
+                        {/* Footer row */}
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <p className="text-xs text-gray-400 flex items-center gap-1">
                             <Clock className="w-3 h-3 flex-shrink-0" />
@@ -421,7 +431,7 @@ export default function AdminOrders() {
                           </button>
                         </div>
 
-                        {/* ── Expanded timeline ──────────────────────── */}
+                        {/* ── Expanded timeline ── */}
                         {isExpanded && (
                           <div className="border-t border-gray-100 mt-4 pt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
 

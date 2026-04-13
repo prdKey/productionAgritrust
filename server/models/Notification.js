@@ -1,3 +1,5 @@
+// models/Notification.js
+
 import { DataTypes } from "sequelize";
 import sequelize from "../config/database.js";
 
@@ -27,6 +29,16 @@ const Notification = sequelize.define("Notification", {
   orderId: {
     type: DataTypes.INTEGER,
     allowNull: true,
+  },
+  // ── NEW: which role panel should see this notification ───────────────────
+  // BUYER    → buyer/user panel lang
+  // SELLER   → seller panel lang
+  // LOGISTICS → logistics panel lang
+  // null     → fallback (show sa lahat, para sa old data)
+  recipientRole: {
+    type: DataTypes.ENUM("BUYER", "SELLER", "LOGISTICS"),
+    allowNull: true,
+    defaultValue: null,
   },
   read: {
     type: DataTypes.BOOLEAN,

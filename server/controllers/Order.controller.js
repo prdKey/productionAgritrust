@@ -153,11 +153,13 @@ export const checkout = async (req, res) => {
       i.hasVariant && i.variantLabel ? `${i.name} (${i.variantLabel})` : i.name
     ).join(", ");
 
+    // → Seller panel notification
     await createNotification(order.sellerAddress, {
-      type:    "ORDER",
-      title:   "New Order Received!",
-      message: `You have a new order #${orderId}: ${itemNames}. Please confirm shipment.`,
-      orderId: Number(orderId),
+      type:          "ORDER",
+      title:         "New Order Received!",
+      message:       `You have a new order #${orderId}: ${itemNames}. Please confirm shipment.`,
+      orderId:       Number(orderId),
+      recipientRole: "SELLER",
     });
 
     res.json({ message: "Order created successfully", orderId, txHash: tx.hash });
@@ -181,15 +183,16 @@ export const confirmShipment = async (req, res) => {
       i.hasVariant && i.variantLabel ? `${i.name} (${i.variantLabel})` : i.name
     ).join(", ");
 
+    // → Buyer panel notification
     await createNotification(order.buyerAddress, {
-      type:    "ORDER",
-      title:   "Order Shipped!",
-      message: `Your order #${orderId} (${itemNames}) has been shipped and is waiting for logistics pickup.`,
-      orderId: Number(orderId),
+      type:          "ORDER",
+      title:         "Order Shipped!",
+      message:       `Your order #${orderId} (${itemNames}) has been shipped and is waiting for logistics pickup.`,
+      orderId:       Number(orderId),
+      recipientRole: "BUYER",
     });
 
-    emitOrderStatus(orderId, 2); // Shipped
-
+    emitOrderStatus(orderId, 2);
     res.json({ message: "Shipment confirmed", txHash: tx.hash });
   } catch (err) { res.status(500).json({ error: err.reason || err.message }); }
 };
@@ -201,15 +204,17 @@ export const markOutForDelivery = async (req, res) => {
     await tx.wait();
 
     const order = await orderManagerContract.getOrderById(orderId);
+
+    // → Buyer panel notification
     await createNotification(order.buyerAddress, {
-      type:    "DELIVERY",
-      title:   "Out for Delivery!",
-      message: `Your order #${orderId} is now out for delivery!`,
-      orderId: Number(orderId),
+      type:          "DELIVERY",
+      title:         "Out for Delivery!",
+      message:       `Your order #${orderId} is now out for delivery!`,
+      orderId:       Number(orderId),
+      recipientRole: "BUYER",
     });
 
-    emitOrderStatus(orderId, 4); // OutForDelivery
-
+    emitOrderStatus(orderId, 4);
     res.json({ message: "Marked out for delivery", txHash: tx.hash });
   } catch (err) { res.status(500).json({ error: err.reason || err.message }); }
 };
@@ -222,16 +227,18 @@ export const pickupOrder = async (req, res) => {
     await tx.wait();
 
     const order = await orderManagerContract.getOrderById(orderId);
+
+    // → Buyer panel notification
     await createNotification(order.buyerAddress, {
-      type:    "DELIVERY",
-      title:   "Order Picked Up",
-      message: `Your order #${orderId} has been picked up and is on its way!`,
-      orderId: Number(orderId),
+      type:          "DELIVERY",
+      title:         "Order Picked Up",
+      message:       `Your order #${orderId} has been picked up and is on its way!`,
+      orderId:       Number(orderId),
+      recipientRole: "BUYER",
     });
 
-    emitOrderStatus(orderId, 3);  // PickedUp
-    emitTrackingStart(orderId);   // → MapTracker shows live marker
-
+    emitOrderStatus(orderId, 3);
+    emitTrackingStart(orderId);
     res.json({ message: "Order picked up", txHash: tx.hash });
   } catch (err) { res.status(500).json({ error: err.reason || err.message }); }
 };
@@ -244,16 +251,18 @@ export const confirmDelivery = async (req, res) => {
     await tx.wait();
 
     const order = await orderManagerContract.getOrderById(orderId);
+
+    // → Buyer panel notification
     await createNotification(order.buyerAddress, {
-      type:    "SUCCESS",
-      title:   "Order Delivered!",
-      message: `Your order #${orderId} has been delivered. Please confirm receipt to release payment.`,
-      orderId: Number(orderId),
+      type:          "SUCCESS",
+      title:         "Order Delivered!",
+      message:       `Your order #${orderId} has been delivered. Please confirm receipt to release payment.`,
+      orderId:       Number(orderId),
+      recipientRole: "BUYER",
     });
 
-    emitOrderStatus(orderId, 5);  // Delivered
-    emitTrackingStop(orderId);    // → MapTracker hides live marker
-
+    emitOrderStatus(orderId, 5);
+    emitTrackingStop(orderId);
     res.json({ message: "Delivery confirmed", txHash: tx.hash });
   } catch (err) { res.status(500).json({ error: err.reason || err.message }); }
 };
@@ -265,21 +274,26 @@ export const confirmReceipt = async (req, res) => {
     await tx.wait();
 
     const order = await orderManagerContract.getOrderById(orderId);
+
+    // → Seller panel notification
     await createNotification(order.sellerAddress, {
-      type:    "SUCCESS",
-      title:   "Payment Released!",
-      message: `Order #${orderId} completed. ${formatUnits(order.totalProductPrice, 18)} AGT released to your wallet.`,
-      orderId: Number(orderId),
+      type:          "SUCCESS",
+      title:         "Payment Released!",
+      message:       `Order #${orderId} completed. ${formatUnits(order.totalProductPrice, 18)} AGT released to your wallet.`,
+      orderId:       Number(orderId),
+      recipientRole: "SELLER",
     });
+
+    // → Buyer panel notification
     await createNotification(order.buyerAddress, {
-      type:    "SUCCESS",
-      title:   "Order Completed!",
-      message: `Your order #${orderId} is complete. Don't forget to rate the products!`,
-      orderId: Number(orderId),
+      type:          "SUCCESS",
+      title:         "Order Completed!",
+      message:       `Your order #${orderId} is complete. Don't forget to rate the products!`,
+      orderId:       Number(orderId),
+      recipientRole: "BUYER",
     });
 
-    emitOrderStatus(orderId, 6); // Completed
-
+    emitOrderStatus(orderId, 6);
     res.json({ message: "Order completed", txHash: tx.hash });
   } catch (err) { res.status(500).json({ error: err.reason || err.message }); }
 };
@@ -291,15 +305,17 @@ export const cancelOrderBySeller = async (req, res) => {
     await tx.wait();
 
     const order = await orderManagerContract.getOrderById(orderId);
+
+    // → Buyer panel notification
     await createNotification(order.buyerAddress, {
-      type:    "ALERT",
-      title:   "Order Cancelled by Seller",
-      message: `Order #${orderId} cancelled. Full refund of ${formatUnits(order.totalPrice, 18)} AGT returned.`,
-      orderId: Number(orderId),
+      type:          "ALERT",
+      title:         "Order Cancelled by Seller",
+      message:       `Order #${orderId} cancelled. Full refund of ${formatUnits(order.totalPrice, 18)} AGT returned.`,
+      orderId:       Number(orderId),
+      recipientRole: "BUYER",
     });
 
-    emitOrderStatus(orderId, 9); // CancelledBySeller
-
+    emitOrderStatus(orderId, 9);
     res.json({ message: "Order cancelled", txHash: tx.hash });
   } catch (err) { res.status(500).json({ error: err.reason || err.message }); }
 };
@@ -311,15 +327,17 @@ export const cancelOrderByBuyer = async (req, res) => {
     await tx.wait();
 
     const order = await orderManagerContract.getOrderById(orderId);
+
+    // → Seller panel notification
     await createNotification(order.sellerAddress, {
-      type:    "ALERT",
-      title:   "Order Cancelled by Buyer",
-      message: `Order #${orderId} cancelled by buyer. Stock restored.`,
-      orderId: Number(orderId),
+      type:          "ALERT",
+      title:         "Order Cancelled by Buyer",
+      message:       `Order #${orderId} cancelled by buyer. Stock restored.`,
+      orderId:       Number(orderId),
+      recipientRole: "SELLER",
     });
 
-    emitOrderStatus(orderId, 10); // CancelledByBuyer
-
+    emitOrderStatus(orderId, 10);
     res.json({ message: "Order cancelled", txHash: tx.hash });
   } catch (err) { res.status(500).json({ error: err.reason || err.message }); }
 };
@@ -349,15 +367,16 @@ export const openDispute = async (req, res) => {
       status:       "OPEN",
     });
 
+    // Notify the OTHER party — opposite role
     await createNotification(isBuyer ? order.sellerAddress : order.buyerAddress, {
-      type:    "ALERT",
-      title:   "Dispute Opened",
-      message: `A dispute has been opened for Order #${orderId}. Admin will review. Funds remain in escrow.`,
-      orderId: Number(orderId),
+      type:          "ALERT",
+      title:         "Dispute Opened",
+      message:       `A dispute has been opened for Order #${orderId}. Admin will review. Funds remain in escrow.`,
+      orderId:       Number(orderId),
+      recipientRole: isBuyer ? "SELLER" : "BUYER",
     });
 
-    emitOrderStatus(orderId, 7); // Disputed
-
+    emitOrderStatus(orderId, 7);
     res.json({ message: "Dispute opened", txHash: tx.hash });
   } catch (err) {
     res.status(500).json({ error: err.reason || err.message });
@@ -365,16 +384,6 @@ export const openDispute = async (req, res) => {
 };
 
 // ── resolveDispute ────────────────────────────────────────────────────────────
-//
-//  Mirrors the smart contract logic:
-//
-//  refundBuyer = false → seller wins, normal _completeOrder() distribution
-//
-//  refundBuyer = true  → buyer wins, BUT:
-//    pickedUpAt == 0   → full totalPrice refunded to buyer, logistics gets nothing
-//    pickedUpAt  > 0   → logistics keeps their fee (50 AGT), buyer gets the rest
-//
-// ─────────────────────────────────────────────────────────────────────────────
 export const resolveDispute = async (req, res) => {
   try {
     const { orderId, refundBuyer, adminNotes } = req.body;
@@ -395,8 +404,6 @@ export const resolveDispute = async (req, res) => {
     const order = await orderManagerContract.getOrderById(orderId);
 
     if (refundBuyer) {
-      // ── Determine what the buyer actually received ─────────────────────────
-      // Mirrors the smart contract: if logistics picked up, they keep their fee.
       const ZERO_ADDRESS     = "0x0000000000000000000000000000000000000000";
       const logisticsDidWork =
         Number(order.pickedUpAt) > 0 &&
@@ -409,52 +416,59 @@ export const resolveDispute = async (req, res) => {
         ? (parseFloat(totalPriceAGT) - parseFloat(logisticsFeeAGT)).toFixed(4)
         : totalPriceAGT;
 
-      // Notify buyer
+      // → Buyer panel notification
       await createNotification(order.buyerAddress, {
-        type:    "SUCCESS",
-        title:   "Dispute Resolved — Refunded",
-        message: logisticsDidWork
+        type:          "SUCCESS",
+        title:         "Dispute Resolved — Refunded",
+        message:       logisticsDidWork
           ? `Dispute for Order #${orderId} resolved. ${buyerRefundAGT} AGT refunded to your wallet. Logistics fee of ${logisticsFeeAGT} AGT was retained (parcel was already picked up).`
           : `Dispute for Order #${orderId} resolved. Full refund of ${buyerRefundAGT} AGT returned to your wallet.`,
-        orderId: Number(orderId),
+        orderId:       Number(orderId),
+        recipientRole: "BUYER",
       });
 
-      // Notify seller
+      // → Seller panel notification
       await createNotification(order.sellerAddress, {
-        type:    "ALERT",
-        title:   "Dispute Resolved — Buyer Refunded",
-        message: `Dispute for Order #${orderId} resolved in the buyer's favour. No payment was released to you.`,
-        orderId: Number(orderId),
+        type:          "ALERT",
+        title:         "Dispute Resolved — Buyer Refunded",
+        message:       `Dispute for Order #${orderId} resolved in the buyer's favour. No payment was released to you.`,
+        orderId:       Number(orderId),
+        recipientRole: "SELLER",
       });
 
-      // Notify logistics if they did work
+      // → Logistics panel notification (if they did work)
       if (logisticsDidWork) {
         await createNotification(order.logisticsAddress, {
-          type:    "SUCCESS",
-          title:   "Logistics Fee Paid",
-          message: `Dispute for Order #${orderId} resolved. You received your logistics fee of ${logisticsFeeAGT} AGT because you had already picked up the parcel.`,
-          orderId: Number(orderId),
+          type:          "SUCCESS",
+          title:         "Logistics Fee Paid",
+          message:       `Dispute for Order #${orderId} resolved. You received your logistics fee of ${logisticsFeeAGT} AGT because you had already picked up the parcel.`,
+          orderId:       Number(orderId),
+          recipientRole: "LOGISTICS",
         });
       }
 
-      emitOrderStatus(orderId, 8); // Refunded
+      emitOrderStatus(orderId, 8);
 
     } else {
-      // ── Seller wins — normal distribution already done by _completeOrder ───
+      // → Seller panel notification
       await createNotification(order.sellerAddress, {
-        type:    "SUCCESS",
-        title:   "Dispute Resolved — Payment Released",
-        message: `Dispute for Order #${orderId} resolved in your favour. ${formatUnits(order.totalProductPrice, 18)} AGT released to your wallet.`,
-        orderId: Number(orderId),
-      });
-      await createNotification(order.buyerAddress, {
-        type:    "ALERT",
-        title:   "Dispute Resolved",
-        message: `Dispute for Order #${orderId} resolved. Payment was released to the seller.`,
-        orderId: Number(orderId),
+        type:          "SUCCESS",
+        title:         "Dispute Resolved — Payment Released",
+        message:       `Dispute for Order #${orderId} resolved in your favour. ${formatUnits(order.totalProductPrice, 18)} AGT released to your wallet.`,
+        orderId:       Number(orderId),
+        recipientRole: "SELLER",
       });
 
-      emitOrderStatus(orderId, 6); // Completed
+      // → Buyer panel notification
+      await createNotification(order.buyerAddress, {
+        type:          "ALERT",
+        title:         "Dispute Resolved",
+        message:       `Dispute for Order #${orderId} resolved. Payment was released to the seller.`,
+        orderId:       Number(orderId),
+        recipientRole: "BUYER",
+      });
+
+      emitOrderStatus(orderId, 6);
     }
 
     res.json({ message: "Dispute resolved", txHash: tx.hash });
@@ -523,13 +537,24 @@ export const acceptOrder = async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.reason || err.message }); }
 };
 
+// ── getDisputedOrders ─────────────────────────────────────────────────────────
 export const getDisputedOrders = async (req, res) => {
   try {
-    const all      = await orderManagerContract.getAllOrders();
-    const disputed = all.filter(o => Number(o.status) === 7);
-    const orders   = await enrichOrders(disputed);
+    const allDisputes      = await Dispute.findAll();
+    const disputedOrderIds = allDisputes.map(d => Number(d.orderId));
+
+    if (disputedOrderIds.length === 0) {
+      return res.json({ orders: [] });
+    }
+
+    const all                = await orderManagerContract.getAllOrders();
+    const ordersWithDisputes = all.filter(o => disputedOrderIds.includes(Number(o.id)));
+    const orders             = await enrichOrders(ordersWithDisputes);
+
     res.json({ orders });
-  } catch (err) { res.status(500).json({ error: err.reason || err.message }); }
+  } catch (err) {
+    res.status(500).json({ error: err.reason || err.message });
+  }
 };
 
 export const updateOrderLocation = async (req, res) => {

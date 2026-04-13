@@ -8,7 +8,6 @@ const ProductCard = ({ product }) => {
   const totalRatings = product.totalRatings  ?? 0;
   const filledStars  = Math.round(avgRating);
 
-  // Support both variant-based and legacy single-price products
   const variants = product.variants?.length
     ? product.variants
     : [{ label: "default", pricePerUnit: product.pricePerUnit, stock: product.stock }];
@@ -58,7 +57,7 @@ const ProductCard = ({ product }) => {
           {product.name}
         </h3>
 
-        {/* Variant pills — stop propagation so clicking doesn't navigate */}
+        {/* Variant pills */}
         {variants.length > 1 && (
           <div
             className="flex flex-wrap gap-1"
@@ -79,7 +78,7 @@ const ProductCard = ({ product }) => {
           </div>
         )}
 
-        {/* Price + stock for selected variant */}
+        {/* Price + stock */}
         <div className="flex items-center justify-between">
           <span className="text-green-600 font-black text-base">
             {Number(v.pricePerUnit).toFixed(2)}
@@ -98,23 +97,23 @@ const ProductCard = ({ product }) => {
         <div className="h-px bg-gray-100" />
 
         {/* Rating + Location */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-0.5">
           <div className="flex items-center gap-0.5">
             {Array.from({ length: 5 }).map((_, i) => (
               <svg key={i}
-                className={`w-3 h-3 ${i < filledStars ? "text-yellow-400" : "text-gray-200"}`}
+                className={`w-2 h-2 ${i < filledStars ? "text-yellow-400" : "text-gray-200"}`}
                 fill="currentColor" viewBox="0 0 20 20">
                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.97a1 1 0 00.95.69h4.176c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.97c.3.921-.755 1.688-1.54 1.118l-3.38-2.454a1 1 0 00-1.176 0l-3.38 2.454c-.784.57-1.838-.197-1.539-1.118l1.287-3.97a1 1 0 00-.364-1.118L2.049 9.397c-.783-.57-.38-1.81.588-1.81h4.176a1 1 0 00.95-.69l1.286-3.97z" />
               </svg>
             ))}
-            <span className="text-gray-400 text-[10px] ml-1">
+            <span className="text-gray-400 text-[9px] ml-0.5">
               {avgRating > 0 ? avgRating : "No ratings"}
               {totalRatings > 0 && ` (${totalRatings})`}
             </span>
           </div>
 
-          <div className="flex items-center gap-1 text-gray-400 text-[10px] max-w-[50%]">
-            <MapPin className="w-2.5 h-2.5 flex-shrink-0 text-green-400" />
+          <div className="flex items-center gap-0.5 text-gray-400 text-[9px]">
+            <MapPin className="w-2 h-2 flex-shrink-0 text-green-400" />
             <span className="truncate">
               {product.ownerAddress?.barangay}, {product.ownerAddress?.city}
             </span>

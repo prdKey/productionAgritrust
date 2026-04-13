@@ -8,10 +8,8 @@ import { createAppKit } from "@reown/appkit/react";
 import { EthersAdapter } from "@reown/appkit-adapter-ethers";
 import { defineChain } from "@reown/appkit/networks";
 
-// 1. Get your Project ID from https://cloud.walletconnect.com
 const projectId = "975943154ad55430a677c6366f2cc120";
 
-// 2. SKALE Europa DeFi Hub Testnet
 const skaleEuropaTestnet = defineChain({
   id: 1444673419,
   name: "SKALE Europa DeFi Hub Testnet",
@@ -22,8 +20,8 @@ const skaleEuropaTestnet = defineChain({
   },
   rpcUrls: {
     default: {
-      http: ["https://juicy-low-small-testnet.skalenodes.com/v1"],
-      webSocket: ["wss://juicy-low-small-testnet.skalenodes.com/v1/ws"],
+      http: ["https://testnet.skalenodes.com/v1/juicy-low-small-testnet"],
+      webSocket: ["wss://testnet.skalenodes.com/v1/ws/juicy-low-small-testnet"],
     },
   },
   blockExplorers: {
@@ -35,13 +33,12 @@ const skaleEuropaTestnet = defineChain({
   testnet: true,
 });
 
-// 3. Initialize AppKit
 createAppKit({
   adapters: [new EthersAdapter()],
   networks: [skaleEuropaTestnet],
   projectId,
   metadata: {
-    name: "Your App Name",
+    name: "Agritrust",
     description: "Your App Description",
     url: window.location.origin,
     icons: ["https://your-app.com/icon.png"],

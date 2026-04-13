@@ -27,6 +27,8 @@ import flagRoute from "./routes/Flag.route.js";
 const app = express();
 const server = http.createServer(app);
 
+app.set('trust proxy', 1); 
+
 /* =========================
    1. HIDE EXPRESS
 ========================= */
