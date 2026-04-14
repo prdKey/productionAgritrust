@@ -256,7 +256,7 @@ export default function BuyerDisputes() {
                           <div className="space-y-1.5 text-xs">
                             {[
                               ["Ordered",          order.createdAt],
-                              ["Shipped",          order.confirmAt],
+                              ["Confirmed",        order.confirmAt],
                               ["Picked Up",        order.pickedUpAt],
                               ["Out for Delivery", order.outForDeliveryAt],
                               ["Delivered",        order.deliveredAt],

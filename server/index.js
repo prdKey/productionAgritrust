@@ -4,12 +4,12 @@ import { sequelize } from "./models/index.js";
 import { initSocket } from "./config/socket.js";
 import cors from "cors";
 import dotenv from "dotenv";
-import helmet from "helmet";
+import helmet from "helmet";  
 import rateLimit from "express-rate-limit";
 import hpp from "hpp";
+import { startAutoReleaseScheduler } from './scheduler/autoRelease.js';
 
 dotenv.config();
-
 // Routes
 import productRoute from "./routes/Product.route.js";
 import authRoute from "./routes/Auth.route.js";
@@ -153,3 +153,5 @@ sequelize.sync().then(() => {
     console.log(`Server running on port ${process.env.PORT || 3001}`);
   });
 });
+
+startAutoReleaseScheduler();

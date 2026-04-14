@@ -245,7 +245,7 @@ function MyOrderCard({ order, onRefresh, onModalOpen, actionLoading, setActionLo
                 <div className="space-y-1.5 text-xs">
                   {[
                     ["Created",          order.createdAt],
-                    ["Shipped",          order.confirmAt],
+                    ["Confirmed",        order.confirmAt],
                     ["Picked Up",        order.pickedUpAt],
                     ["Out for Delivery", order.outForDeliveryAt],
                     ["Delivered",        order.deliveredAt],
@@ -434,7 +434,7 @@ export default function LogisticOrders() {
           <div className="bg-white rounded-xl shadow-sm p-12 text-center">
             <Star className="w-16 h-16 mx-auto text-gray-300 mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-1">No available orders</h3>
-            <p className="text-gray-500 text-sm">New delivery jobs will appear here when sellers confirm shipment</p>
+            <p className="text-gray-500 text-sm">New delivery jobs will appear here when sellers confirm order</p>
           </div>
         ) : (
           <div className="space-y-4">

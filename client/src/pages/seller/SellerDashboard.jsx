@@ -24,7 +24,7 @@ const formatDate = (timestamp) => {
 const getStatusBadge = (status) => {
   const cfg = {
     1: { label: "PAID",            color: "bg-yellow-100 text-yellow-800" },
-    2: { label: "SHIPPED",         color: "bg-blue-100 text-blue-800" },
+    2: { label: "CONFIRMED",       color: "bg-blue-100 text-blue-800" },
     3: { label: "PICKED UP",       color: "bg-indigo-100 text-indigo-800" },
     4: { label: "OUT FOR DELIVERY",color: "bg-purple-100 text-purple-800" },
     5: { label: "DELIVERED",       color: "bg-teal-100 text-teal-800" },

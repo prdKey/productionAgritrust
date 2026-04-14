@@ -10,7 +10,7 @@ const PINATA = "https://bronze-magnificent-constrictor-556.mypinata.cloud/ipfs/"
 
 const STATUS_TABS = [
   { id: "all", label: "All" },
-  { id: 1, label: "Paid" }, { id: 2, label: "Shipped" },
+  { id: 1, label: "Paid" }, { id: 2, label: "Confirmed" },
   { id: 3, label: "Picked Up" }, { id: 4, label: "Out for Delivery" },
   { id: 5, label: "Delivered" }, { id: 6, label: "Completed" },
   { id: 7, label: "Disputed" }, { id: 8, label: "Refunded" },
@@ -19,7 +19,7 @@ const STATUS_TABS = [
 
 const STATUS_CONFIG = {
   1:  { label: "PAID",             color: "bg-yellow-100 text-yellow-800 border-yellow-200" },
-  2:  { label: "SHIPPED",          color: "bg-blue-100 text-blue-800 border-blue-200" },
+  2:  { label: "ORDER CONFIRMED",  color: "bg-blue-100 text-blue-800 border-blue-200" },
   3:  { label: "PICKED UP",        color: "bg-indigo-100 text-indigo-800 border-indigo-200" },
   4:  { label: "OUT FOR DELIVERY", color: "bg-purple-100 text-purple-800 border-purple-200" },
   5:  { label: "DELIVERED",        color: "bg-teal-100 text-teal-800 border-teal-200" },
@@ -62,7 +62,7 @@ export default function SellerOrders() {
   const handleConfirmShipment = async (orderId) => {
     setModal(null); setActionLoading(orderId);
     try { await confirmShipment(orderId); await fetchOrders(); }
-    catch (e) { alert(e.response?.data?.error || "Failed to confirm shipment"); }
+    catch (e) { alert(e.response?.data?.error || "Failed to confirm order"); }
     finally { setActionLoading(null); }
   };
 
@@ -107,9 +107,9 @@ export default function SellerOrders() {
     const configs = {
       ship: {
         icon: <Truck className="w-12 h-12 text-blue-500 mx-auto mb-3" />,
-        title: "Confirm Shipment",
-        body: `Mark Order #${order.id} as shipped? This will notify the buyer and make the order available for logistics pickup.`,
-        confirmLabel: "Yes, Mark as Shipped",
+        title: "Confirm Order",
+        body: `Mark Order #${order.id} as confirmed? This will notify the buyer and make the order available for logistics pickup.`,
+        confirmLabel: "Yes, Mark as Confirmed",
         confirmClass: "bg-blue-600 hover:bg-blue-700",
         onConfirm: () => handleConfirmShipment(order.id),
       },
@@ -272,7 +272,7 @@ export default function SellerOrders() {
                       {canShip && (
                         <button onClick={() => setModal({ type: "ship", order })} disabled={isActing}
                           className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50">
-                          {isActing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Truck className="w-3.5 h-3.5" />} Mark as Shipped
+                          {isActing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Truck className="w-3.5 h-3.5" />} Mark as Confirmed
                         </button>
                       )}
                       {canCancel && (
@@ -348,7 +348,7 @@ export default function SellerOrders() {
                             <div className="space-y-1.5 text-xs">
                               {[
                                 ["Created",          order.createdAt],
-                                ["Shipped",          order.confirmAt],
+                                ["Confirmed",        order.confirmAt],
                                 ["Picked Up",        order.pickedUpAt],
                                 ["Out for Delivery", order.outForDeliveryAt],
                                 ["Delivered",        order.deliveredAt],

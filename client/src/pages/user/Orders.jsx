@@ -18,7 +18,7 @@ const PAGE_SIZE = 10;
 
 const STATUS_TABS = [
   { id: "all", label: "All" },
-  { id: 1, label: "Paid" }, { id: 2, label: "Shipped" },
+  { id: 1, label: "Paid" }, { id: 2, label: "Confirmed" },
   { id: 3, label: "Picked Up" }, { id: 4, label: "Out for Delivery" },
   { id: 5, label: "Delivered" }, { id: 6, label: "Completed" },
   { id: 7, label: "Disputed" }, { id: 8, label: "Refunded" },
@@ -28,7 +28,7 @@ const STATUS_TABS = [
 
 const STATUS_CONFIG = {
   1:  { label: "PAID",             color: "bg-yellow-100 text-yellow-800 border-yellow-200" },
-  2:  { label: "SHIPPED",          color: "bg-blue-100 text-blue-800 border-blue-200" },
+  2:  { label: "CONFIRMED",        color: "bg-blue-100 text-blue-800 border-blue-200" },
   3:  { label: "PICKED UP",        color: "bg-indigo-100 text-indigo-800 border-indigo-200" },
   4:  { label: "OUT FOR DELIVERY", color: "bg-purple-100 text-purple-800 border-purple-200" },
   5:  { label: "DELIVERED",        color: "bg-teal-100 text-teal-800 border-teal-200" },
@@ -324,7 +324,7 @@ export default function BuyerOrders() {
                           ? <span className="flex items-center gap-1.5 px-4 py-2 bg-amber-50 text-amber-600 border border-amber-200 rounded-xl text-sm font-medium"><Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" /> Rated</span>
                           : <button onClick={() => setRatingOrder(order)} className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 text-white rounded-xl text-sm font-medium hover:bg-amber-600 transition-colors"><Star className="w-3.5 h-3.5" /> Rate Products</button>
                         )}
-                        {order.status === 1  && <span className="text-sm text-yellow-600 font-medium self-center">⏳ Awaiting shipment</span>}
+                        {order.status === 1  && <span className="text-sm text-yellow-600 font-medium self-center">⏳ Awaiting confirmation</span>}
                         {order.status === 2  && <span className="text-sm text-blue-600 font-medium self-center">📦 Waiting for logistics pickup</span>}
                         {order.status === 6  && <span className="text-sm text-green-600 font-semibold self-center flex items-center gap-1"><CheckCircle className="w-4 h-4" /> Completed</span>}
                         {order.status === 7  && <span className="text-sm text-red-600 font-medium self-center">⚖️ Under review by admin</span>}
@@ -367,7 +367,7 @@ export default function BuyerOrders() {
                             <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
                               <h4 className="font-semibold text-gray-900 text-sm mb-3">Timeline</h4>
                               <div className="space-y-1.5 text-xs">
-                                {[["Created",order.createdAt],["Shipped",order.confirmAt],["Picked Up",order.pickedUpAt],["Out for Delivery",order.outForDeliveryAt],["Delivered",order.deliveredAt],["Completed",order.completedAt],["Cancelled",order.cancelledAt]]
+                                {[["Created",order.createdAt],["Confirmed",order.confirmAt],["Picked Up",order.pickedUpAt],["Out for Delivery",order.outForDeliveryAt],["Delivered",order.deliveredAt],["Completed",order.completedAt],["Cancelled",order.cancelledAt]]
                                   .filter(([,ts]) => ts && ts > 0).map(([label, ts]) => (
                                   <div key={label} className="flex justify-between gap-2">
                                     <span className="text-gray-500 flex-shrink-0">{label}:</span>

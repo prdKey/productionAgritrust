@@ -7,7 +7,7 @@ export default function SellerPanel() {
   const menu = [
     { name: "Dashboard", icon: LayoutDashboard, path:"dashboard"},
     { name: "Seller Products", icon: Package, path:"products" },
-    { name: "Orders Received", icon: ShoppingCart, path:"orders" },
+    { name: "Order Requests", icon: ShoppingCart, path:"orders" },
     { name: "Product Appeal", icon:  Scale, path: "appeal"},
     { name: "Product Dispute", icon:  AlertTriangle, path: "dispute"},
     { name: "Notifications", icon:  Bell, path: "notifications"},

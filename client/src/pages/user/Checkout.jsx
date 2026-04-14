@@ -903,7 +903,7 @@ export default function CheckoutPage() {
                 { e: "⛓️", t: "On-chain escrow — funds locked until delivery" },
                 { e: "🔒", t: "ReentrancyGuard protected contract" },
                 { e: "⚖️", t: "Dispute resolution by platform admin" },
-                { e: "↩️", t: "Cancellation available before shipment" },
+                { e: "↩️", t: "Cancellation available before confirmation" },
               ].map(({ e, t }) => (
                 <div key={t} className="flex items-start gap-3 text-xs text-gray-500">
                   <span>{e}</span> {t}

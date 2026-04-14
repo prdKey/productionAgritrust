@@ -3,12 +3,13 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const sequelize = new Sequelize(
-  process.env.DB_NAME || "testagritrust",
-  process.env.DB_USER || "root",
-  process.env.DB_PASSWORD || "Filipinas1.",
+  process.env.DB_NAME     || "agritrust",
+  process.env.DB_USER     || "agritrust_user",
+  process.env.DB_PASSWORD || "@Agritrust2026.",
   {
-    host: process.env.DB_HOST || "localhost",
-    dialect: "mysql"
+    host:    process.env.DB_HOST || "agritrust.shop",
+    port:    process.env.DB_PORT || 3306,   // ← dagdag
+    dialect: "mysql",
   }
 );
 

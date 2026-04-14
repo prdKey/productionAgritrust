@@ -105,7 +105,7 @@ export default function BuyerDashboard() {
   const getStatusInfo = (status) => {
     const statusMap = {
       1:  { label: "PAID",             color: "bg-yellow-100 text-yellow-800", icon: Clock       },
-      2:  { label: "SHIPPED",          color: "bg-blue-100 text-blue-800",     icon: Package     },
+      2:  { label: "CONFIRMED",        color: "bg-blue-100 text-blue-800",     icon: Package     },
       3:  { label: "PICKED UP",        color: "bg-indigo-100 text-indigo-800", icon: Truck       },
       4:  { label: "OUT FOR DELIVERY", color: "bg-purple-100 text-purple-800", icon: Truck       },
       5:  { label: "DELIVERED",        color: "bg-teal-100 text-teal-800",     icon: MapPin      },
@@ -192,7 +192,7 @@ export default function BuyerDashboard() {
         <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg p-6 text-white shadow-lg">
           <div className="flex items-start justify-between mb-4">
             <div>
-              <p className="text-orange-100 text-sm font-medium">Awaiting Shipment</p>
+              <p className="text-orange-100 text-sm font-medium">Awaiting Confirmation</p>
               <p className="text-3xl font-bold mt-2">{pendingOrders}</p>
             </div>
             <div className="bg-white/20 p-3 rounded-lg"><Clock size={24} /></div>
