@@ -14,6 +14,7 @@ export default function Register() {
   const navigate  = useNavigate();
   const [loading,      setLoading]      = useState(false);
   const [networkError, setNetworkError] = useState("");
+  const [showTerms, setShowTerms] = useState(false);
 
   const [cities,    setCities]    = useState([]);
   const [barangays, setBarangays] = useState([]);
@@ -222,8 +223,13 @@ export default function Register() {
               Already have an account? Connect your wallet
             </p>
             <p className="text-xs text-gray-400 mt-2 text-center">
-              By continuing, you agree to our Terms & Conditions
+              By continuing, you agree to our{" "}
+              <span onClick={() => setShowTerms(true)}
+                className="underline cursor-pointer hover:text-green-600 transition">
+                Terms & Conditions
+              </span>
             </p>
+            {showTerms && <TermsModal onClose={() => setShowTerms(false)} />}
           </div>
         </form>
       </div>

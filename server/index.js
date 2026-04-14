@@ -149,7 +149,7 @@ initSocket(server);
    12. START SERVER
 ========================= */
 sequelize.sync().then(() => {
-  server.listen(process.env.PORT || 3001, () => {
+  server.listen(process.env.DB_PORT || 3001, () => {
     console.log(`Server running on port ${process.env.PORT || 3001}`);
   });
 });

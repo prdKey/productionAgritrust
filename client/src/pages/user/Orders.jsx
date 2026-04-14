@@ -28,7 +28,7 @@ const STATUS_TABS = [
 
 const STATUS_CONFIG = {
   1:  { label: "PAID",             color: "bg-yellow-100 text-yellow-800 border-yellow-200" },
-  2:  { label: "CONFIRMED",        color: "bg-blue-100 text-blue-800 border-blue-200" },
+  2:  { label: "ORDER CONFIRMED",        color: "bg-blue-100 text-blue-800 border-blue-200" },
   3:  { label: "PICKED UP",        color: "bg-indigo-100 text-indigo-800 border-indigo-200" },
   4:  { label: "OUT FOR DELIVERY", color: "bg-purple-100 text-purple-800 border-purple-200" },
   5:  { label: "DELIVERED",        color: "bg-teal-100 text-teal-800 border-teal-200" },
@@ -61,7 +61,7 @@ function ConfirmModal({ modal, onClose, onConfirm }) {
   const configs = {
     receipt: {
       icon: <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />,
-      title: "Confirm Receipt",
+      title: "Confirm Order Received",
       body: `Confirm you received all items in Order #${order.id}? This releases ${parseFloat(order.totalProductPrice).toFixed(2)} AGT to the seller and ${parseFloat(order.logisticsFee).toFixed(2)} AGT to logistics.`,
       confirmLabel: "Yes, I Received It",
       confirmClass: "bg-green-600 hover:bg-green-700",
@@ -242,11 +242,20 @@ export default function BuyerOrders() {
               const isActing     = actionLoading === order.id;
               const canCancel    = order.status === 1;
               const canConfirm   = order.status === 5;
-              const canDispute   = [2, 3, 4, 5].includes(order.status);
-              const canTrack     = [2, 3, 4, 5].includes(order.status);
+              const canDispute   = [5].includes(order.status);
+              const canTrack     = [2, 3, 4].includes(order.status);
               const isCompleted  = order.status === 6;
               const alreadyRated = ratedOrders[order.id];
               const lineItems    = order.lineItems || [];
+
+              // Cancellation fee calculations
+              const cancellationFee    = calcCancellationFee(order.totalPrice);
+              const refundAfterCancel  = (parseFloat(order.totalPrice) * 0.99).toFixed(4);
+
+              // Refund amount — use order.refundAmount if available, else fall back to totalPrice
+              const refundAmount = order.refundAmount
+                ? parseFloat(order.refundAmount).toFixed(4)
+                : parseFloat(order.totalPrice).toFixed(4);
 
               return (
                 <div key={order.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all border border-gray-200 overflow-hidden">
@@ -279,6 +288,28 @@ export default function BuyerOrders() {
                           <p className="text-xs text-gray-500">Total Paid</p>
                           <p className="font-bold text-green-600">{parseFloat(order.totalPrice).toFixed(2)} AGT</p>
                         </div>
+
+                        {/* ── Refunded summary in left panel ── */}
+                        {order.status === 8 && (
+                          <div className="pt-2 border-t border-orange-200 space-y-1">
+                            <p className="text-xs text-gray-500">Amount Refunded</p>
+                            <p className="font-bold text-orange-500">{refundAmount} AGT</p>
+                          </div>
+                        )}
+
+                        {/* ── Cancellation fee summary in left panel ── */}
+                        {(order.status === 9 || order.status === 10) && (
+                          <div className="pt-2 border-t border-gray-300 space-y-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-gray-500">Cancel Fee (1%)</span>
+                              <span className="font-semibold text-red-500">−{cancellationFee} AGT</span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-gray-500">You Received</span>
+                              <span className="font-semibold text-green-600">{refundAfterCancel} AGT</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -310,9 +341,46 @@ export default function BuyerOrders() {
                         </div>
                       )}
 
+                      {/* ── Refund info banner ── */}
+                      {order.status === 8 && (
+                        <div className="bg-orange-50 rounded-xl p-3 border border-orange-200 flex items-start gap-2">
+                          <span className="text-lg leading-none">↩️</span>
+                          <div>
+                            <p className="text-sm font-semibold text-orange-700">Order Refunded</p>
+                            <p className="text-xs text-gray-600 mt-0.5">
+                              <span className="font-bold text-orange-600">{refundAmount} AGT</span> has been returned to your wallet.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── Cancellation fee info banner ── */}
+                      {(order.status === 9 || order.status === 10) && (
+                        <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
+                          <p className="text-xs font-semibold text-gray-600 flex items-center gap-1 mb-2">
+                            <XCircle className="w-3.5 h-3.5 text-red-400" /> Cancellation Summary
+                          </p>
+                          <div className="space-y-1 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">Amount Paid</span>
+                              <span className="font-semibold">{parseFloat(order.totalPrice).toFixed(4)} AGT</span>
+                            </div>
+                            <div className="flex justify-between text-red-500">
+                              <span>Cancellation Fee (1%)</span>
+                              <span className="font-semibold">−{cancellationFee} AGT</span>
+                            </div>
+                            <div className="flex justify-between border-t pt-1 text-green-600">
+                              <span className="font-semibold">Refunded to Wallet</span>
+                              <span className="font-bold">{refundAfterCancel} AGT</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="flex flex-wrap gap-2 pt-1">
                         {canTrack    && <button onClick={() => navigate(`/track-order/${order.id}`)} className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 transition-colors"><Navigation className="w-3.5 h-3.5" /> Track Order</button>}
-                        {canConfirm  && <button onClick={() => setModal({ type: "receipt", order })} disabled={isActing} className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50">{isActing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />} Confirm Receipt</button>}
+                        {canConfirm  && <button onClick={() => setModal({ type: "receipt", order })} disabled={isActing} className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50">{isActing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />} Confirm Order Received</button>}
+                        {<span className="text-sm text-teal-600 font-medium self-center">🕐 Auto-confirms in 3 days</span>}
                         {canCancel   && <button onClick={() => setModal({ type: "cancel", order })} disabled={isActing} className="flex items-center gap-1.5 px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-xl text-sm font-medium hover:bg-red-100 transition-colors disabled:opacity-50">{isActing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />} Cancel Order</button>}
                         {canDispute  && (
                           <button onClick={() => setModal({ type: "dispute", order })} disabled={isActing}
@@ -328,8 +396,8 @@ export default function BuyerOrders() {
                         {order.status === 2  && <span className="text-sm text-blue-600 font-medium self-center">📦 Waiting for logistics pickup</span>}
                         {order.status === 6  && <span className="text-sm text-green-600 font-semibold self-center flex items-center gap-1"><CheckCircle className="w-4 h-4" /> Completed</span>}
                         {order.status === 7  && <span className="text-sm text-red-600 font-medium self-center">⚖️ Under review by admin</span>}
-                        {order.status === 8  && <span className="text-sm text-orange-600 font-medium self-center">↩️ Refunded</span>}
-                        {(order.status === 9 || order.status === 10) && <span className="text-sm text-gray-500 font-medium self-center">❌ Cancelled</span>}
+                        {order.status === 8  && <span className="text-sm text-orange-600 font-medium self-center">↩️ Refunded: <span className="font-bold">{refundAmount} AGT</span></span>}
+                        {(order.status === 9 || order.status === 10) && <span className="text-sm text-gray-500 font-medium self-center">❌ Cancelled · Fee: <span className="font-bold text-red-500">{cancellationFee} AGT</span></span>}
                         <button onClick={() => setExpandedId(isExpanded ? null : order.id)} className="ml-auto flex items-center gap-1.5 px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl transition-colors border border-gray-300">
                           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                           {isExpanded ? "Hide" : "Details"}
@@ -362,6 +430,26 @@ export default function BuyerOrders() {
                                 <div className="flex justify-between"><span className="text-gray-500">Platform fee</span><span>{parseFloat(order.platformFee).toFixed(4)} AGT</span></div>
                                 <div className="flex justify-between"><span className="text-gray-500">Logistics</span><span>{parseFloat(order.logisticsFee).toFixed(2)} AGT</span></div>
                                 <div className="flex justify-between border-t pt-2 font-semibold"><span>Total</span><span className="text-green-600">{parseFloat(order.totalPrice).toFixed(2)} AGT</span></div>
+                                {/* Cancellation breakdown in expanded details */}
+                                {(order.status === 9 || order.status === 10) && (
+                                  <>
+                                    <div className="flex justify-between text-red-500 border-t pt-2">
+                                      <span>Cancellation Fee (1%)</span>
+                                      <span className="font-semibold">−{cancellationFee} AGT</span>
+                                    </div>
+                                    <div className="flex justify-between font-semibold text-green-600">
+                                      <span>Refunded</span>
+                                      <span>{refundAfterCancel} AGT</span>
+                                    </div>
+                                  </>
+                                )}
+                                {/* Refund breakdown in expanded details */}
+                                {order.status === 8 && (
+                                  <div className="flex justify-between border-t pt-2 font-semibold text-orange-500">
+                                    <span>Refunded</span>
+                                    <span>{refundAmount} AGT</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                             <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">

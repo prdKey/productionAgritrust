@@ -312,7 +312,7 @@ export default function LogisticOrders() {
       await fetchAll();
       setMainTab("my-orders");
     } catch (e) {
-      alert(e.response?.data?.error || "Failed to accept order");
+      alert("Failed to accept order or it's already taken by another logistics provider.");
     } finally { setActionLoading(null); }
   };
 
@@ -321,7 +321,7 @@ export default function LogisticOrders() {
     const { type, order, onConfirm } = modal;
     const configs = {
       accept: {
-        icon: <Star className="w-12 h-12 text-green-500 mx-auto mb-3" />,
+        icon: <Star className="w-12 h-12 text-green-500 mx-auto mb-3" />, 
         title: "Accept Delivery Job",
         body: `Accept Order #${order.id} (${(order.lineItems || []).length} item${(order.lineItems || []).length !== 1 ? "s" : ""})? You'll earn ${safeFloat(order.logisticsFee).toFixed(2)} AGT upon delivery.`,
         confirmLabel: "Accept Job",
@@ -482,6 +482,7 @@ export default function LogisticOrders() {
                       <div className="bg-gray-50 rounded-xl p-3 border border-gray-200 grid grid-cols-2 gap-3 text-sm">
                         <div><p className="text-xs text-gray-500 mb-0.5">Products Value</p><p className="font-semibold">{safeFloat(order.totalProductPrice).toFixed(2)} AGT</p></div>
                         <div><p className="text-xs text-gray-500 mb-0.5">Created</p><p className="font-semibold text-xs">{fmtTime(order.createdAt) || "N/A"}</p></div>
+                        <div><p className="text-xs text-gray-500 mb-0.5">Confirmed</p><p className="font-semibold text-xs">{fmtTime(order.confirmAt) || "N/A"}</p></div>
                       </div>
                       <button onClick={() => setModal({ type: "accept", order })} disabled={isActing}
                         className="w-full py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">

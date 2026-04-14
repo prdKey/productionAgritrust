@@ -30,6 +30,8 @@ const STATUS_CONFIG = {
   10: { label: "CANCELLED",        color: "bg-gray-200 text-gray-600 border-gray-300" },
 };
 
+const isCancelledOrRefunded = (status) => [8, 9, 10].includes(status);
+
 const fmtTime = (ts) => (!ts || ts === 0) ? null : new Date(ts * 1000).toLocaleString();
 const formatAddress = (loc) => {
   if (!loc) return "N/A";
@@ -45,7 +47,6 @@ export default function SellerOrders() {
   const [expandedId, setExpandedId]       = useState(null);
   const [activeTab, setActiveTab]         = useState("all");
   const [modal, setModal]                 = useState(null);
-
   const [disputeReason, setDisputeReason] = useState("");
 
   const fetchOrders = async () => {
@@ -77,8 +78,8 @@ export default function SellerOrders() {
     setModal(null);
     setActionLoading(orderId);
     try {
-      await openDispute(orderId, disputeReason); // ← idagdag ang reason
-      setDisputeReason("");                       // ← i-clear pagkatapos
+      await openDispute(orderId, disputeReason);
+      setDisputeReason("");
       await fetchOrders();
     } catch (e) {
       alert(e.response?.data?.error || "Failed to open dispute");
@@ -91,12 +92,6 @@ export default function SellerOrders() {
     const cfg = STATUS_CONFIG[status] || { label: "UNKNOWN", color: "bg-gray-100 text-gray-800 border-gray-200" };
     return <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${cfg.color}`}>{cfg.label}</span>;
   };
-
-  // Summary of line items for modal text
-  const itemsSummary = (order) =>
-    (order.lineItems || []).map(i =>
-      i.hasVariant && i.variantLabel ? `${i.name} (${i.variantLabel}) ×${i.quantity}` : `${i.name} ×${i.quantity}`
-    ).join(", ");
 
   const filteredOrders = (activeTab === "all" ? orders : orders.filter(o => o.status === activeTab))
     .slice().sort((a, b) => b.id - a.id);
@@ -191,6 +186,7 @@ export default function SellerOrders() {
             const canCancel  = order.status === 1;
             const canDispute = order.status === 5;
             const lineItems  = order.lineItems || [];
+            const noEarnings = isCancelledOrRefunded(order.status);
 
             return (
               <div key={order.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all border border-gray-200 overflow-hidden">
@@ -232,9 +228,24 @@ export default function SellerOrders() {
                         </div>
                       </div>
 
-                      <div className="pt-2 border-t border-gray-200 grid grid-cols-2 gap-2">
-                        <div><p className="text-xs text-gray-500">You Earn</p><p className="font-bold text-green-600 text-sm">{parseFloat(order.totalProductPrice).toFixed(2)} AGT</p></div>
-                        <div><p className="text-xs text-gray-500">Buyer Paid</p><p className="font-bold text-blue-600 text-sm">{parseFloat(order.totalPrice).toFixed(2)} AGT</p></div>
+                      {/* Earnings summary — hidden for cancelled/refunded */}
+                      <div className="pt-2 border-t border-gray-200">
+                        {noEarnings ? (
+                          <div>
+                            <p className="text-xs text-gray-400 mb-0.5">Order Total</p>
+                            <p className="font-bold text-gray-400 text-sm line-through">
+                              {parseFloat(order.totalPrice).toFixed(2)} AGT
+                            </p>
+                            <p className="text-[10px] text-gray-400 mt-0.5">
+                              {order.status === 8 ? "Refunded to buyer" : "Order cancelled"}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-2">
+                            <div><p className="text-xs text-gray-500">You Earn</p><p className="font-bold text-green-600 text-sm">{parseFloat(order.totalProductPrice).toFixed(2)} AGT</p></div>
+                            <div><p className="text-xs text-gray-500">Buyer Paid</p><p className="font-bold text-blue-600 text-sm">{parseFloat(order.totalPrice).toFixed(2)} AGT</p></div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -261,10 +272,20 @@ export default function SellerOrders() {
                     )}
 
                     {/* Fee summary */}
-                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-200 grid grid-cols-3 gap-3 text-sm">
-                      <div><p className="text-xs text-gray-500 mb-0.5">You Earn</p><p className="font-semibold text-green-600">{parseFloat(order.totalProductPrice).toFixed(2)} AGT</p></div>
-                      <div><p className="text-xs text-gray-500 mb-0.5">Platform Fee</p><p className="font-semibold text-gray-700">{parseFloat(order.platformFee).toFixed(4)} AGT</p></div>
-                      <div><p className="text-xs text-gray-500 mb-0.5">Logistics Fee</p><p className="font-semibold text-gray-700">{parseFloat(order.logisticsFee).toFixed(2)} AGT</p></div>
+                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-200 text-sm">
+                      {noEarnings ? (
+                        <div className="text-center py-1">
+                          <p className="text-gray-400 font-medium text-sm">
+                            {order.status === 8 ? "↩️ Order refunded — no earnings" : "❌ Order cancelled — no earnings"}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-3">
+                          <div><p className="text-xs text-gray-500 mb-0.5">You Earn</p><p className="font-semibold text-green-600">{parseFloat(order.totalProductPrice).toFixed(2)} AGT</p></div>
+                          <div><p className="text-xs text-gray-500 mb-0.5">Platform Fee</p><p className="font-semibold text-gray-700">{parseFloat(order.platformFee).toFixed(4)} AGT</p></div>
+                          <div><p className="text-xs text-gray-500 mb-0.5">Logistics Fee</p><p className="font-semibold text-gray-700">{parseFloat(order.logisticsFee).toFixed(2)} AGT</p></div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Actions */}
@@ -290,7 +311,7 @@ export default function SellerOrders() {
 
                       {order.status === 2  && <span className="text-sm text-blue-600 font-medium self-center">📦 Waiting for logistics pickup</span>}
                       {(order.status === 3 || order.status === 4) && <span className="text-sm text-purple-600 font-medium self-center">🚚 Order in transit</span>}
-                      {order.status === 5  && <span className="text-sm text-teal-600 font-medium self-center">🕐 Awaiting buyer confirmation</span>}
+                      {order.status === 5  && <span className="text-sm text-teal-600 font-medium self-center">🕐 Awaiting Buyer Confirmation • Auto-confirms in 3 days</span>}
                       {order.status === 6  && <span className="text-sm text-green-600 font-semibold self-center flex items-center gap-1"><CheckCircle className="w-4 h-4" /> Completed — payment released</span>}
                       {order.status === 7  && <span className="text-sm text-red-600 font-medium self-center">⚖️ Under dispute review</span>}
                       {order.status === 8  && <span className="text-sm text-orange-600 font-medium self-center">↩️ Refunded to buyer</span>}
@@ -326,23 +347,40 @@ export default function SellerOrders() {
                                   )}
                                   <p className="text-gray-400">{item.category} · ×{item.quantity} · {parseFloat(item.pricePerUnit).toFixed(2)} AGT/unit</p>
                                 </div>
-                                <p className="font-semibold text-gray-900 flex-shrink-0">{parseFloat(item.productPrice).toFixed(2)} AGT</p>
+                                <p className="font-semibold text-gray-400 flex-shrink-0 line-through">{parseFloat(item.productPrice).toFixed(2)} AGT</p>
                               </div>
                             ))}
                           </div>
                         </div>
 
                         <div className="grid md:grid-cols-2 gap-4">
+                          {/* Price breakdown */}
                           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
                             <h4 className="font-semibold text-gray-900 text-sm mb-3">Price Breakdown</h4>
                             <div className="space-y-2 text-xs">
-                              <div className="flex justify-between"><span className="text-gray-500">Products (you earn)</span><span className="font-semibold text-green-600">{parseFloat(order.totalProductPrice).toFixed(2)} AGT</span></div>
+                              {!noEarnings && (
+                                <div className="flex justify-between">
+                                  <span className="text-gray-500">Products (you earn)</span>
+                                  <span className="font-semibold text-green-600">{parseFloat(order.totalProductPrice).toFixed(2)} AGT</span>
+                                </div>
+                              )}
                               <div className="flex justify-between"><span className="text-gray-500">Platform fee</span><span>{parseFloat(order.platformFee).toFixed(4)} AGT</span></div>
                               <div className="flex justify-between"><span className="text-gray-500">Logistics fee</span><span>{parseFloat(order.logisticsFee).toFixed(2)} AGT</span></div>
-                              <div className="flex justify-between border-t pt-2 font-semibold"><span>Total (escrow)</span><span className="text-blue-600">{parseFloat(order.totalPrice).toFixed(2)} AGT</span></div>
+                              <div className="flex justify-between border-t pt-2 font-semibold">
+                                <span>Total (escrow)</span>
+                                <span className={noEarnings ? "text-gray-400 line-through" : "text-blue-600"}>
+                                  {parseFloat(order.totalPrice).toFixed(2)} AGT
+                                </span>
+                              </div>
+                              {noEarnings && (
+                                <p className="text-center text-gray-400 text-[10px] pt-1">
+                                  {order.status === 8 ? "Refunded to buyer" : "Order cancelled"}
+                                </p>
+                              )}
                             </div>
                           </div>
 
+                          {/* Timeline */}
                           <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
                             <h4 className="font-semibold text-gray-900 text-sm mb-3">Timeline</h4>
                             <div className="space-y-1.5 text-xs">

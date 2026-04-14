@@ -12,6 +12,7 @@ export default function Login() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [networkError, setNetworkError] = useState("");
+  const [showTerms, setShowTerms] = useState(false);
 
   const { open }           = useAppKit();
   const { address, isConnected } = useAppKitAccount();
@@ -163,9 +164,15 @@ export default function Login() {
             New User? Register your wallet
           </p>
         </div>
-        <p className="text-xs text-gray-400 mt-6">
-          By continuing, you agree to our Terms & Conditions
+        <p className="text-xs text-gray-400 mt-2 text-center">
+          By continuing, you agree to our{" "}
+          <span onClick={() => setShowTerms(true)}
+            className="underline cursor-pointer hover:text-green-600 transition">
+            Terms & Conditions
+          </span>
         </p>
+
+        {showTerms && <TermsModal onClose={() => setShowTerms(false)} />}
       </div>
     </div>
   );
